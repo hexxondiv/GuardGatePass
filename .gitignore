@@ -1,41 +1,63 @@
 # Learn more https://docs.github.com/en/get-started/gitignoring-files
 
-# dependencies
+# Dependencies
 node_modules/
 
 # Expo
 .expo/
 dist/
 web-build/
+expo-env.d.ts
 
-# Native
-*.orig.*
+# Native — regenerated with `npx expo prebuild` / `expo run:android|ios`
+android/
+ios/
+
+# Native signing / secrets (never commit)
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
+*.orig.*
 
 # Metro
 .metro-health-check*
 
-# debug
+# Logs & debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing / coverage
+coverage/
+
+# Env files (keep `.env.example` tracked)
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # macOS
 .DS_Store
 *.pem
 
-# local env files
-.env
-.env.local
-.env.*.local
+# Windows
+Thumbs.db
+ehthumbs.db
 
-# typescript
-*.tsbuildinfo
+# IDEs / editors (JetBrains / Android Studio project metadata)
+.idea/
+*.iml
 
-# Android / iOS native (generated)
-android/
-ios/
+# Misc
+*.swp
+*.swo
+*~
