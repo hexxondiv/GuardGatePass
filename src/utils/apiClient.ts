@@ -1,3 +1,14 @@
+/**
+ * Shared Axios instance for authenticated API calls.
+ *
+ * - **Base URL**: `API_BASE_URL` from `app_constants` (host + `/api/v1` when applicable).
+ * - **ngrok**: sets `ngrok-skip-browser-warning` when the base URL host contains `ngrok`.
+ * - **Auth**: `Authorization: Bearer <token>` from SecureStore (`SECURE_ACCESS_TOKEN_KEY`).
+ * - **Tenancy**: `X-Estate-Id` from the request if set; otherwise from SecureStore
+ *   (`ACTIVE_ESTATE_STORAGE_KEY`), which `AuthProvider` keeps in sync when the user selects an estate.
+ *   Per-call override: pass `headers: { 'X-Estate-Id': '<id>' }`.
+ * - **401** (non-login): clears token + active estate and notifies `sessionEvents` (no refresh; backend has no refresh flow).
+ */
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import {

@@ -92,10 +92,20 @@ const API_ENDPOINTS = {
   /** Staff login (guard / estate_admin / super_admin) — same path as admin web. */
   LOGIN_ADMIN: `/login/admin`,
   LOGIN: `/login/`,
+  /** Current user — same as ResidentGatePass `GET_USER`; used for `id` as `guard_id` on verify payloads. */
+  MY_PROFILE: `/users/my_profile`,
   ESTATES: `/estates/`,
   ESTATE: (id: number | string) => `/estates/${id}`,
+  /** Estate members listing — same as `gatepass-frontend` `API_ENDPOINTS.ESTATE_MEMBERS`. */
+  ESTATE_MEMBERS: (estateId: number | string) => `/estates/${estateId}/members`,
   GATEPASS_VERIFY: `/gatepass/verify`,
+  /** Record gate use (OpenAPI `UseGatePass`) — optional; match admin web `recordGatePassAccess`. */
+  GATEPASS_ACCESS: `/gatepass/access`,
   GATEPASS_INSTANT_GUEST: `/gatepass/instant-guest`,
+  /** Under `/api/v1` alongside `gatepass` router — see `gatepass-api/app/main.py`. */
+  GUARD_DEVICES_REGISTER: `/guard-devices/register`,
+  GUARD_SYNC_BOOTSTRAP: `/guard-sync/bootstrap`,
+  GUARD_SYNC_EVENTS: `/guard-sync/events`,
 };
 
 export {

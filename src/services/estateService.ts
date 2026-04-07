@@ -1,4 +1,5 @@
 import { API_ENDPOINTS } from '../config/app_constants';
+import type { EstateMemberListResponse } from '../types/gateApi';
 import type { EstateSummary } from '../utils/accessControl';
 import apiClient from '../utils/apiClient';
 
@@ -10,6 +11,39 @@ type EstateListResponse = {
 };
 
 const PAGE_SIZE = 100;
+
+/**
+ * Estate members search — same contract as `gatepass-frontend` `getEstateMembers`
+ * (`GET /estates/{estateId}/members` with optional filters).
+ */
+export async function getEstateMembers(
+  estateId: number | string,
+  filters: {
+    skip?: number;
+    limit?: number;
+    user_id?: number | string;
+    q?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    status?: string;
+    address?: string;
+    role_id?: number | string;
+    exclude_role_id?: number | string;
+    housing_type_id?: number | string;
+    property_id?: number | string;
+    property_unit_id?: number | string;
+  } = {},
+): Promise<EstateMemberListResponse> {
+  const params = Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined && value !== null),
+  );
+
+  const res = await apiClient.get<EstateMemberListResponse>(API_ENDPOINTS.ESTATE_MEMBERS(estateId), {
+    params,
+  });
+  return res.data;
+}
 
 /**
  * Paginates `GET /estates/` — canonical list for `super_admin` (same as `gatepass-frontend` `fetchAllEstatesSummaries`).
