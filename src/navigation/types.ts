@@ -1,5 +1,6 @@
 export type RootStackParamList = {
   Login: undefined;
+  AccessDenied: undefined;
   GuardTabs: undefined;
 };
 

@@ -17,12 +17,14 @@ const appConfig = (
  * Inlined by Metro from `.env` — survives dev-client / `extra` cache issues better than `Constants.expoConfig` alone.
  * Set to the same host as `DEV_API_BASE_URL` (ngrok or LAN IP), no `/api/v1` suffix.
  */
+const env = typeof process !== 'undefined' ? (process.env as Record<string, string | undefined>) : {};
+
 const metroDevApiHost =
   typeof __DEV__ !== 'undefined' &&
   __DEV__ &&
   typeof process !== 'undefined' &&
-  process.env.EXPO_PUBLIC_DEV_API_BASE_URL
-    ? String(process.env.EXPO_PUBLIC_DEV_API_BASE_URL).trim()
+  env.EXPO_PUBLIC_DEV_API_BASE_URL
+    ? String(env.EXPO_PUBLIC_DEV_API_BASE_URL).trim()
     : '';
 
 /** Android emulator → host machine. iOS Simulator → host machine. Physical device needs DEV_API_BASE_URL (LAN IP). */
@@ -51,14 +53,21 @@ function resolvePaystackCallbackBase(origin: string): string {
   return `${t}/api/v1`;
 }
 
+/**
+ * In dev (`__DEV__`), default to the machine-local API (emulator loopback) so we match
+ * `gatepass-frontend` `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8001` without requiring
+ * `DEV_MODE=true`. If `DEV_MODE=false`, `app.config.js` still sets `extra.appConfig.apiBaseUrl`
+ * to production — using that here would send the dev client to prod while admin hits localhost.
+ * Override with `EXPO_PUBLIC_DEV_API_BASE_URL` (e.g. ngrok, LAN IP, or prod URL when testing prod).
+ */
 const apiHostBase =
   metroDevApiHost.length > 0
     ? metroDevApiHost
-    : appConfig?.apiBaseUrl && appConfig.apiBaseUrl.length > 0
-      ? appConfig.apiBaseUrl
-      : appConfig?.devMode
-        ? defaultDevApiBase
-        : typeof __DEV__ !== 'undefined' && __DEV__
+    : typeof __DEV__ !== 'undefined' && __DEV__
+      ? defaultDevApiBase
+      : appConfig?.apiBaseUrl && appConfig.apiBaseUrl.length > 0
+        ? appConfig.apiBaseUrl
+        : appConfig?.devMode
           ? defaultDevApiBase
           : 'https://gatepass.hexxondiv.com';
 
@@ -69,11 +78,31 @@ const PAYSTACK_CALLBACK_BASE_URL = appConfig?.paystackCallbackBaseUrl?.length
   : resolvePaystackCallbackBase(apiHostBase);
 const APP_SCHEME = 'com.hexxondiv.guardgatepass';
 
-/** Placeholder endpoints — expanded in later workstreams. */
+/**
+ * SecureStore key for JWT — same as ResidentGatePass `userToken` so Bearer attachment stays consistent.
+ */
+const SECURE_ACCESS_TOKEN_KEY = 'userToken';
+
+/**
+ * Active estate id for `X-Estate-Id` — same key string as `gatepass-frontend` `ACTIVE_ESTATE_STORAGE_KEY`.
+ */
+const ACTIVE_ESTATE_STORAGE_KEY = 'active_estate_id';
+
 const API_ENDPOINTS = {
+  /** Staff login (guard / estate_admin / super_admin) — same path as admin web. */
+  LOGIN_ADMIN: `/login/admin`,
   LOGIN: `/login/`,
+  ESTATES: `/estates/`,
+  ESTATE: (id: number | string) => `/estates/${id}`,
   GATEPASS_VERIFY: `/gatepass/verify`,
   GATEPASS_INSTANT_GUEST: `/gatepass/instant-guest`,
 };
 
-export { API_BASE_URL, API_ENDPOINTS, APP_SCHEME, PAYSTACK_CALLBACK_BASE_URL };
+export {
+  ACTIVE_ESTATE_STORAGE_KEY,
+  API_BASE_URL,
+  API_ENDPOINTS,
+  APP_SCHEME,
+  PAYSTACK_CALLBACK_BASE_URL,
+  SECURE_ACCESS_TOKEN_KEY,
+};

@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import GuardTabs from './src/navigation/GuardTabs';
+import AccessDeniedScreen from './src/screens/AccessDeniedScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import { navigationRef } from './src/navigation/RootNavigation';
 import type { RootStackParamList } from './src/navigation/types';
@@ -25,7 +26,7 @@ const linking = {
 };
 
 function RootNavigator() {
-  const { userToken, isLoading } = useAuth();
+  const { userToken, isLoading, isStaffAppUser } = useAuth();
 
   if (isLoading) {
     return (
@@ -39,6 +40,14 @@ function RootNavigator() {
     return (
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Login" component={LoginScreen} />
+      </Stack.Navigator>
+    );
+  }
+
+  if (!isStaffAppUser) {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="AccessDenied" component={AccessDeniedScreen} />
       </Stack.Navigator>
     );
   }
