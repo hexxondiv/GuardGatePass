@@ -88,6 +88,9 @@ const SECURE_ACCESS_TOKEN_KEY = 'userToken';
  */
 const ACTIVE_ESTATE_STORAGE_KEY = 'active_estate_id';
 
+/** Stable install id for `device_id` on verify / guard sync (Workstreams 4 & 7). */
+const DEVICE_ID_STORAGE_KEY = 'guard_device_install_id';
+
 const API_ENDPOINTS = {
   /** Staff login (guard / estate_admin / super_admin) — same path as admin web. */
   LOGIN_ADMIN: `/login/admin`,
@@ -113,6 +116,7 @@ export {
   API_BASE_URL,
   API_ENDPOINTS,
   APP_SCHEME,
+  DEVICE_ID_STORAGE_KEY,
   PAYSTACK_CALLBACK_BASE_URL,
   SECURE_ACCESS_TOKEN_KEY,
 };

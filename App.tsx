@@ -21,7 +21,18 @@ const linking = {
   config: {
     screens: {
       Login: 'login',
-      GuardTabs: '',
+      GuardTabs: {
+        path: '',
+        screens: {
+          Verification: {
+            path: 'verification',
+            parse: {
+              code: (value: string) => value,
+            },
+          },
+          Settings: 'settings',
+        },
+      },
     },
   },
 };

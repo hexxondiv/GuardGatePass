@@ -5,6 +5,7 @@ export type RootStackParamList = {
 };
 
 export type GuardTabParamList = {
-  Verification: undefined;
+  /** Optional `code` query for deep links / testing (parity with web `?code=`). */
+  Verification: { code?: string };
   Settings: undefined;
 };
