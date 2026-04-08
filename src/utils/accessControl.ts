@@ -25,11 +25,14 @@ const ROLE_ALIASES: Record<string, AppRole> = {
   security: 'guard',
 };
 
+/**
+ * Backend `access_levels.id` is a global privilege ladder, not the estate role:
+ * `1=Basic`, `2=Moderator`, `3=Admin`, `4=Super Admin`.
+ * Only infer roles that are unambiguous from that ladder; `guard` must come from `role_name`.
+ */
 const ACCESS_LEVEL_ROLE_MAP: Record<number, AppRole> = {
-  1: 'super_admin',
-  2: 'estate_admin',
-  3: 'resident',
-  4: 'guard',
+  3: 'estate_admin',
+  4: 'super_admin',
 };
 
 const STAFF_APP_ROLES: AppRole[] = ['guard', 'estate_admin', 'super_admin'];
