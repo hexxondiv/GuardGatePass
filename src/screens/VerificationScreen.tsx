@@ -1,12 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -32,6 +34,13 @@ import { getOrCreateDeviceId } from '../utils/deviceId';
 import { getApiErrorMessage } from '../utils/apiErrors';
 import { extractQueryParam } from '../utils/linkingUrl';
 import type { GuardTabParamList } from '../navigation/types';
+
+type ScanQrModalProps = {
+  visible: boolean;
+  onClose: () => void;
+  onValidCode: (normalizedSixDigit: string) => void;
+  pauseScanning?: boolean;
+};
 
 const KEYPAD_ROWS: (string | number)[][] = [
   [1, 2, 3],
@@ -60,6 +69,67 @@ export default function VerificationScreen() {
   } | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [scanQrVisible, setScanQrVisible] = useState(false);
+  const [scanQrModalImpl, setScanQrModalImpl] = useState<ComponentType<ScanQrModalProps> | null>(null);
+  const [scanQrLoadError, setScanQrLoadError] = useState<string | null>(null);
+  /** Manual paste when camera module fails to load (parity with ScanQrModal paste path). */
+  const [scanQrPasteText, setScanQrPasteText] = useState('');
+
+  useEffect(() => {
+    if (!scanQrVisible) {
+      setScanQrPasteText('');
+    }
+  }, [scanQrVisible]);
+
+  useEffect(() => {
+    if (!scanQrVisible) {
+      setScanQrModalImpl(null);
+      setScanQrLoadError(null);
+      return;
+    }
+    let cancelled = false;
+    setScanQrLoadError(null);
+    setScanQrModalImpl(null);
+    void import('./ScanQrModal')
+      .then((m) => {
+        if (!cancelled) {
+          setScanQrModalImpl(() => m.default);
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          const raw = e instanceof Error ? e.message : String(e);
+          setScanQrLoadError(
+            raw.includes('ExpoCamera') || raw.toLowerCase().includes('native module')
+              ? 'Camera native code is not in this build. From the Guard Gate project folder run: npx expo run:android (or npx expo run:ios), then open the installed development build — not the Expo Go app.'
+              : raw,
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scanQrVisible]);
+
+  const closeScanQr = useCallback(() => {
+    setScanQrVisible(false);
+  }, []);
+
+  const applyScanQrPaste = useCallback(() => {
+    const normalized = rawScanToAccessCode(scanQrPasteText);
+    if (isCompleteAccessCode(normalized)) {
+      setAccessCode(normalized);
+      setScanQrPasteText('');
+      setScanQrVisible(false);
+      return;
+    }
+    Alert.alert(
+      'Invalid code',
+      'Could not read a 6-digit access code from this text. Enter 6 digits or JSON with access_code.',
+      [{ text: 'OK' }],
+      { cancelable: true },
+    );
+  }, [scanQrPasteText]);
 
   const lastAttemptedCodeRef = useRef<string | null>(null);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -370,18 +440,20 @@ export default function VerificationScreen() {
                       style={[styles.flipFaceFront, { opacity: frontOpacity }]}
                       pointerEvents={outcome !== null ? 'none' : 'auto'}
                     >
-                      <View
+                      <Pressable
                         style={[
                           styles.qrZone,
                           (pending || outcome !== null) && styles.qrZoneDisabled,
                         ]}
-                        accessibilityRole="text"
-                        accessibilityLabel="QR scan area"
+                        accessibilityRole="button"
+                        accessibilityLabel="Open QR scanner"
+                        disabled={pending || outcome !== null}
+                        onPress={() => setScanQrVisible(true)}
                       >
                         <Ionicons name="qr-code-outline" size={36} color="rgba(255,255,255,0.45)" />
                         <Text style={styles.qrLabel}>Scan QR</Text>
-                        <Text style={styles.qrHint}>Same code as manual entry (camera in next update)</Text>
-                      </View>
+                        <Text style={styles.qrHint}>Tap to scan with camera or paste JSON in the scanner</Text>
+                      </Pressable>
                     </Animated.View>
                   </View>
                 </View>
@@ -477,6 +549,90 @@ export default function VerificationScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {scanQrVisible && scanQrLoadError ? (
+        <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanQr}>
+          <SafeAreaView style={styles.scanQrFallback} edges={['top', 'bottom']}>
+            <View style={styles.scanQrFallbackHeader}>
+              <Text style={styles.scanQrFallbackTitle}>Scan QR (no camera)</Text>
+              <Pressable
+                onPress={closeScanQr}
+                style={({ pressed }) => [styles.scanQrFallbackClose, pressed && { opacity: 0.7 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Ionicons name="close" size={28} color="#f0f6fc" />
+              </Pressable>
+            </View>
+            <ScrollView
+              style={styles.scanQrFallbackScroll}
+              contentContainerStyle={styles.scanQrFallbackScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.scanQrFallbackBody}>{scanQrLoadError}</Text>
+              <View style={styles.scanQrPasteSection}>
+                <Text style={styles.scanQrPasteLabel}>Or paste code / JSON</Text>
+                <TextInput
+                  value={scanQrPasteText}
+                  onChangeText={setScanQrPasteText}
+                  placeholder='e.g. 123456 or {"access_code":"123456"}'
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  style={styles.scanQrPasteInput}
+                  multiline
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  accessibilityLabel="Paste QR text or JSON"
+                />
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.scanQrPasteApply,
+                    pressed && styles.scanQrPasteApplyPressed,
+                  ]}
+                  onPress={applyScanQrPaste}
+                  accessibilityRole="button"
+                  accessibilityLabel="Apply pasted code"
+                >
+                  <Text style={styles.scanQrPasteApplyText}>Apply pasted text</Text>
+                </Pressable>
+              </View>
+              <Pressable style={styles.scanQrFallbackBtn} onPress={closeScanQr} accessibilityRole="button">
+                <Text style={styles.scanQrFallbackBtnText}>Close</Text>
+              </Pressable>
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      ) : null}
+      {scanQrVisible && !scanQrLoadError && scanQrModalImpl
+        ? React.createElement(scanQrModalImpl, {
+            visible: true,
+            onClose: closeScanQr,
+            pauseScanning: pending || outcome !== null,
+            onValidCode: (normalized: string) => {
+              setAccessCode(normalized);
+              setScanQrVisible(false);
+            },
+          })
+        : null}
+      {scanQrVisible && !scanQrLoadError && !scanQrModalImpl ? (
+        <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanQr}>
+          <SafeAreaView style={styles.scanQrFallback} edges={['top', 'bottom']}>
+            <View style={styles.scanQrFallbackHeader}>
+              <Text style={styles.scanQrFallbackTitle}>Scan QR</Text>
+              <Pressable
+                onPress={closeScanQr}
+                style={({ pressed }) => [styles.scanQrFallbackClose, pressed && { opacity: 0.7 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Ionicons name="close" size={28} color="#f0f6fc" />
+              </Pressable>
+            </View>
+            <ActivityIndicator color="#58a6ff" size="large" style={{ marginTop: 24 }} />
+            <Text style={[styles.scanQrFallbackBody, { marginTop: 16 }]}>Loading camera…</Text>
+          </SafeAreaView>
+        </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -742,5 +898,90 @@ const styles = StyleSheet.create({
   },
   statusLinePulse: {
     color: 'rgba(88, 166, 255, 0.95)',
+  },
+  scanQrFallback: {
+    flex: 1,
+    backgroundColor: '#0d1117',
+    paddingHorizontal: 20,
+  },
+  scanQrFallbackHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  scanQrFallbackTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#f0f6fc',
+  },
+  scanQrFallbackClose: {
+    padding: 8,
+    marginRight: -4,
+  },
+  scanQrFallbackBody: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.82)',
+    lineHeight: 22,
+  },
+  scanQrFallbackBtn: {
+    marginTop: 24,
+    alignSelf: 'flex-start',
+    backgroundColor: '#238636',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  scanQrFallbackBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  scanQrFallbackScroll: {
+    flex: 1,
+  },
+  scanQrFallbackScrollContent: {
+    paddingBottom: 24,
+    flexGrow: 1,
+  },
+  scanQrPasteSection: {
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+    gap: 10,
+  },
+  scanQrPasteLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.65)',
+  },
+  scanQrPasteInput: {
+    minHeight: 56,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 10,
+    padding: 12,
+    color: '#f0f6fc',
+    fontSize: 15,
+  },
+  scanQrPasteApply: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  scanQrPasteApplyPressed: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  scanQrPasteApplyText: {
+    color: '#58a6ff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

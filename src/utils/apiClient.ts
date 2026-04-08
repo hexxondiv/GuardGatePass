@@ -18,8 +18,12 @@ import {
 } from '../config/app_constants';
 import { notifySessionUnauthorized } from '../auth/sessionEvents';
 
+/** Default cap so unreachable hosts fail instead of hanging (reduces long stalls / ANR risk after JS loads). */
+const DEFAULT_REQUEST_TIMEOUT_MS = 25_000;
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
+  timeout: DEFAULT_REQUEST_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },

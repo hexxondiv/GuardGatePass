@@ -56,6 +56,8 @@ export async function fetchAllEstatesSummaries(): Promise<EstateSummary[]> {
   while (skip < total) {
     const res = await apiClient.get<EstateListResponse>(API_ENDPOINTS.ESTATES, {
       params: { skip, limit: PAGE_SIZE },
+      /** Fail fast on cold start so `AuthContext` can fall back to JWT claims without a long wait. */
+      timeout: 10_000,
     });
     const data = res.data;
     for (const e of data.items) {

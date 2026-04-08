@@ -27,6 +27,14 @@
     "web": {
       "favicon": "./src/assets/favicon.png"
     },
-    "plugins": ["expo-secure-store"]
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Guard Gate Pass to use the camera to scan visitor gate pass QR codes at the estate entrance."
+        }
+      ]
+    ]
   }
 }
