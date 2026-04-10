@@ -24,6 +24,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useEstateContext } from '../context/EstateContext';
 import { useDebounce } from '../hooks/useDebounce';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import {
+  alignOfflineToggleFromOnlineVerify,
+  queueOfflineVerifyForAccessCode,
+} from '../services/guardSyncCoordinator';
 import { adminCreateInstantGuest, verifyGatePass } from '../services/gatepassService';
 import { getEstateMembers } from '../services/estateService';
 import type { EstateMember, GatePassVerificationResult } from '../types/gateApi';
@@ -68,6 +73,33 @@ export default function VerificationScreen() {
   const queryClient = useQueryClient();
   const { authUser } = useAuth();
   const { activeEstateId } = useEstateContext();
+  const isOnline = useNetworkStatus();
+  const liveDotOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!isOnline) {
+      liveDotOpacity.setValue(1);
+      return;
+    }
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(liveDotOpacity, {
+          toValue: 0.28,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(liveDotOpacity, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [isOnline, liveDotOpacity]);
 
   const [accessCode, setAccessCode] = useState('');
   const debouncedCode = useDebounce(accessCode, DEBOUNCE_MS);
@@ -77,6 +109,11 @@ export default function VerificationScreen() {
   const [resultDetail, setResultDetail] = useState<{
     message: string;
     api?: GatePassVerificationResult | null;
+    offline?: {
+      remainingUses: number;
+      maxUsage: number;
+      guestName?: string | null;
+    };
   } | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -96,6 +133,8 @@ export default function VerificationScreen() {
   const [instantFormError, setInstantFormError] = useState<string | null>(null);
   const [instantSuccessLine, setInstantSuccessLine] = useState<string | null>(null);
   const instantSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [offlineVerifyBusy, setOfflineVerifyBusy] = useState(false);
+  const offlineVerifyBusyRef = useRef(false);
 
   useEffect(() => {
     if (!scanQrVisible) {
@@ -218,6 +257,8 @@ export default function VerificationScreen() {
     setAccessCode('');
     setCountdown(0);
     lastAttemptedCodeRef.current = null;
+    offlineVerifyBusyRef.current = false;
+    setOfflineVerifyBusy(false);
   }, [clearTimers]);
 
   const startCountdown = useCallback(
@@ -264,6 +305,9 @@ export default function VerificationScreen() {
         message: data.message,
         api: data,
       });
+      if (activeEstateId && data.gate_pass_id != null) {
+        void alignOfflineToggleFromOnlineVerify(activeEstateId, data.gate_pass_id, data.event_type ?? null);
+      }
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       await queryClient.invalidateQueries({ queryKey: ['gatepass'] });
       scheduleResultReset(RESULT_RESET_MS);
@@ -397,12 +441,46 @@ export default function VerificationScreen() {
     if (lastAttemptedCodeRef.current === code) {
       return;
     }
-    if (verifyMutation.isPending) {
+    if (verifyMutation.isPending || offlineVerifyBusy || offlineVerifyBusyRef.current) {
       return;
+    }
+
+    if (!isOnline) {
+      if (!activeEstateId) {
+        return;
+      }
+      lastAttemptedCodeRef.current = code;
+      offlineVerifyBusyRef.current = true;
+      setOfflineVerifyBusy(true);
+      void queueOfflineVerifyForAccessCode(activeEstateId, code).then((r) => {
+        offlineVerifyBusyRef.current = false;
+        setOfflineVerifyBusy(false);
+        if (r.ok) {
+          setOutcome('success');
+          setResultDetail({
+            message: r.message,
+            api: null,
+            offline: {
+              remainingUses: r.remainingUsesAfterOptimistic,
+              maxUsage: r.maxUsage,
+              guestName: r.guestName,
+            },
+          });
+        } else {
+          setOutcome('failure');
+          setResultDetail({
+            message: r.message,
+            api: null,
+          });
+        }
+        scheduleResultReset(RESULT_RESET_MS);
+      });
+      return undefined;
     }
 
     lastAttemptedCodeRef.current = code;
     verifyMutation.mutate(code);
+    return undefined;
   }, [
     consoleMode,
     debouncedCode,
@@ -410,6 +488,10 @@ export default function VerificationScreen() {
     outcome,
     verifyMutation.mutate,
     verifyMutation.isPending,
+    offlineVerifyBusy,
+    isOnline,
+    activeEstateId,
+    scheduleResultReset,
   ]);
 
   const setCodeFiltered = useCallback((next: string) => {
@@ -459,7 +541,10 @@ export default function VerificationScreen() {
   }, [guestName, guestNumber, instantMutation, selectedHost]);
 
   const modeToggleDisabled =
-    verifyMutation.isPending || instantMutation.isPending || outcome !== null;
+    verifyMutation.isPending ||
+    instantMutation.isPending ||
+    outcome !== null ||
+    offlineVerifyBusy;
 
   const hostSuggestions = hostSearchData?.items ?? [];
   const showHostList =
@@ -481,14 +566,14 @@ export default function VerificationScreen() {
   const canSubmitInstant =
     Boolean(selectedHost && guestName.trim() && guestNumber.trim()) && !instantMutation.isPending;
 
-  const pending = verifyMutation.isPending;
+  const pending = verifyMutation.isPending || offlineVerifyBusy;
 
   const statusText = (() => {
     if (outcome !== null) {
       return `Next entry in ${countdown}s…`;
     }
     if (pending) {
-      return 'Verifying…';
+      return !isOnline ? 'Offline verify…' : 'Verifying…';
     }
     if (!isStable) {
       if (accessCode.length >= CODE_DIGITS) {
@@ -525,6 +610,22 @@ export default function VerificationScreen() {
             </View>
           ) : null}
 
+          <View
+            style={styles.connectivityBar}
+            accessibilityRole="text"
+            accessibilityLabel={isOnline ? 'Live Mode, online' : 'Offline Mode, using cached data'}
+            accessibilityLiveRegion="polite"
+          >
+            {isOnline ? (
+              <Animated.View style={[styles.liveDot, { opacity: liveDotOpacity }]} />
+            ) : (
+              <View style={styles.offlineDot} />
+            )}
+            <Text style={[styles.connectivityLabel, isOnline ? styles.connectivityLabelLive : styles.connectivityLabelOffline]}>
+              {isOnline ? 'Live Mode' : 'Offline Mode'}
+            </Text>
+          </View>
+
           <View style={styles.shell}>
             <View
               style={[styles.modeSegment, modeToggleDisabled && styles.modeSegmentDisabled]}
@@ -546,7 +647,7 @@ export default function VerificationScreen() {
               </Pressable>
               <Pressable
                 style={[styles.modeSeg, consoleMode === 'instant' && styles.modeSegOn]}
-                disabled={modeToggleDisabled}
+                disabled={modeToggleDisabled || !isOnline}
                 onPress={() => setConsoleMode('instant')}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: consoleMode === 'instant' }}
@@ -620,6 +721,18 @@ export default function VerificationScreen() {
                                   <Text style={[styles.metaLine, styles.metaDenial]}>
                                     Reason: {resultDetail.api.denial_reason}
                                   </Text>
+                                ) : null}
+                              </View>
+                            ) : null}
+                            {outcome === 'success' && resultDetail?.offline ? (
+                              <View style={styles.metaList}>
+                                <Text style={styles.metaLine}>
+                                  {resultDetail.offline.maxUsage > 0
+                                    ? `Remaining uses (local): ${resultDetail.offline.remainingUses}`
+                                    : 'Uses: unlimited (no max_usage cap)'}
+                                </Text>
+                                {resultDetail.offline.guestName ? (
+                                  <Text style={styles.metaLine}>Guest: {resultDetail.offline.guestName}</Text>
                                 ) : null}
                               </View>
                             ) : null}
@@ -738,7 +851,7 @@ export default function VerificationScreen() {
                   </View>
                 </LinearGradient>
               </View>
-            ) : activeEstateId ? (
+            ) : activeEstateId && isOnline ? (
               <View style={styles.panel}>
                 <LinearGradient
                   pointerEvents="none"
@@ -894,6 +1007,13 @@ export default function VerificationScreen() {
                   </View>
                 </LinearGradient>
               </View>
+            ) : activeEstateId && !isOnline ? (
+              <View style={styles.instantBlockedCard}>
+                <Text style={styles.instantBlockedTitle}>Instant guest unavailable offline</Text>
+                <Text style={styles.instantBlockedBody}>
+                  Walk-in guests are created on the server. Connect to the network or use Verify with a cached pass.
+                </Text>
+              </View>
             ) : (
               <View style={styles.instantBlockedCard}>
                 <Text style={styles.instantBlockedTitle}>No estate scope</Text>
@@ -1020,6 +1140,46 @@ const styles = StyleSheet.create({
     color: '#d29922',
     fontSize: 13,
     lineHeight: 18,
+  },
+  connectivityBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  liveDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#3fb950',
+    shadowColor: '#3fb950',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.85,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  offlineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#f85149',
+  },
+  connectivityLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  connectivityLabelLive: {
+    color: '#3fb950',
+  },
+  connectivityLabelOffline: {
+    color: '#f85149',
   },
   modeSegment: {
     flexDirection: 'row',

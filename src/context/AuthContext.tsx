@@ -15,6 +15,8 @@ import {
 } from '../config/app_constants';
 import { loginStaff } from '../services/authService';
 import { fetchAllEstatesSummaries } from '../services/estateService';
+import { runGuardSyncBootstrap } from '../services/guardSyncCoordinator';
+import { clearAllGuardSyncLocalData } from '../storage/guardSyncLocalDb';
 import type { StaffJwtPayload } from '../types/auth';
 import {
   type AppRole,
@@ -89,6 +91,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSession = useCallback(async () => {
     await SecureStore.deleteItemAsync(SECURE_ACCESS_TOKEN_KEY);
     await SecureStore.deleteItemAsync(ACTIVE_ESTATE_STORAGE_KEY);
+    try {
+      await clearAllGuardSyncLocalData();
+    } catch {
+      /* SQLite may be unavailable on some targets */
+    }
     setUserToken(null);
     setAuthUser(null);
     setActiveEstateId(null);
@@ -101,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAuthUser(null);
       setActiveEstateId(null);
       setAvailableEstates([]);
+      void clearAllGuardSyncLocalData().catch(() => {});
     });
     return () => setSessionUnauthorizedHandler(null);
   }, []);
@@ -200,6 +208,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const isStaffAppUser = useMemo(() => isStaffAppRole(roles), [roles]);
+
+  useEffect(() => {
+    if (!userToken || !activeEstateId || !isStaffAppUser) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const out = await runGuardSyncBootstrap(activeEstateId);
+      if (!cancelled && !out.ok && __DEV__) {
+        console.warn('[guard sync bootstrap]', out.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userToken, activeEstateId, isStaffAppUser]);
 
   const value = useMemo(
     () => ({

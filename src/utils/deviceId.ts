@@ -1,4 +1,6 @@
+import * as Application from 'expo-application';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import { DEVICE_ID_STORAGE_KEY } from '../config/app_constants';
 
 function randomId(): string {
@@ -13,8 +15,33 @@ function randomId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+async function resolveNewDeviceId(): Promise<string> {
+  if (Platform.OS === 'android') {
+    try {
+      const aid = Application.getAndroidId();
+      if (typeof aid === 'string' && aid.trim()) {
+        return `and_${aid.trim()}`;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  if (Platform.OS === 'ios') {
+    try {
+      const idfv = await Application.getIosIdForVendorAsync();
+      if (typeof idfv === 'string' && idfv.trim()) {
+        return `ios_${idfv.trim()}`;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return `ggp_${randomId()}`;
+}
+
 /**
- * Stable per-install id for `device_id` on verify (optional; used with offline sync in WS7).
+ * Stable id for `device_id` on `POST /gatepass/verify` and guard sync (`schemas.GuardDeviceRegisterRequest`).
+ * Prefers `expo-application` Android ID / iOS IDFV, else a persisted random id (SecureStore).
  */
 export async function getOrCreateDeviceId(): Promise<string | null> {
   try {
@@ -22,7 +49,7 @@ export async function getOrCreateDeviceId(): Promise<string | null> {
     if (existing?.trim()) {
       return existing.trim();
     }
-    const next = `ggp_${randomId()}`;
+    const next = await resolveNewDeviceId();
     await SecureStore.setItemAsync(DEVICE_ID_STORAGE_KEY, next);
     return next;
   } catch {

@@ -5,6 +5,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import GuardSyncConnectivity from './src/components/GuardSyncConnectivity';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { EstateProvider } from './src/context/EstateContext';
 import GuardTabs from './src/navigation/GuardTabs';
@@ -76,6 +77,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <EstateProvider>
+          <GuardSyncConnectivity />
           <SafeAreaProvider>
             <NavigationContainer ref={navigationRef} linking={linking}>
               <RootNavigator />
