@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Alert,
   Animated,
@@ -43,14 +44,11 @@ import { getOrCreateDeviceId } from '../utils/deviceId';
 import { getApiErrorMessage } from '../utils/apiErrors';
 import { sanitizePhoneForApi } from '../utils/phoneInput';
 import { extractQueryParam } from '../utils/linkingUrl';
+import { preloadVerifyOutcomeSounds, verifyOutcomeFeedback } from '../utils/verifyOutcomeFeedback';
+import SkeletonBlock from '../components/SkeletonBlock';
+import { color, font, radii, space } from '../theme/tokens';
 import type { GuardTabParamList } from '../navigation/types';
-
-type ScanQrModalProps = {
-  visible: boolean;
-  onClose: () => void;
-  onValidCode: (normalizedSixDigit: string) => void;
-  pauseScanning?: boolean;
-};
+import type { ScanQrModalProps } from './ScanQrModal';
 
 const KEYPAD_ROWS: (string | number)[][] = [
   [1, 2, 3],
@@ -75,9 +73,16 @@ export default function VerificationScreen() {
   const { activeEstateId } = useEstateContext();
   const { operationalOnline: isOnline, physicalOnline, forceOfflineMode } = useConnectivityMode();
   const liveDotOpacity = useRef(new Animated.Value(1)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
-    if (!isOnline) {
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion || !isOnline) {
       liveDotOpacity.setValue(1);
       return;
     }
@@ -99,7 +104,7 @@ export default function VerificationScreen() {
     );
     pulse.start();
     return () => pulse.stop();
-  }, [isOnline, liveDotOpacity]);
+  }, [isOnline, liveDotOpacity, reduceMotion]);
 
   const [accessCode, setAccessCode] = useState('');
   const debouncedCode = useDebounce(accessCode, DEBOUNCE_MS);
@@ -204,6 +209,12 @@ export default function VerificationScreen() {
     void getOrCreateDeviceId().then(setDeviceId);
   }, []);
 
+  useEffect(() => {
+    preloadVerifyOutcomeSounds();
+  }, []);
+
+  const flipDurationMs = reduceMotion ? 0 : FLIP_MS;
+
   /** After result → idle, focus the code field (parity with web `autoFocus` after reset). */
   useEffect(() => {
     if (outcome !== null) {
@@ -216,18 +227,22 @@ export default function VerificationScreen() {
     wasShowingOutcomeRef.current = false;
     const id = setTimeout(() => {
       accessCodeInputRef.current?.focus();
-    }, FLIP_MS + 50);
+    }, flipDurationMs + 50);
     return () => clearTimeout(id);
-  }, [outcome]);
+  }, [outcome, flipDurationMs]);
 
   useEffect(() => {
+    if (reduceMotion) {
+      flipAnim.setValue(outcome !== null ? 1 : 0);
+      return;
+    }
     Animated.timing(flipAnim, {
       toValue: outcome !== null ? 1 : 0,
-      duration: FLIP_MS,
+      duration: flipDurationMs,
       easing: Easing.bezier(0.4, 0, 0.2, 1),
       useNativeDriver: true,
     }).start();
-  }, [outcome, flipAnim]);
+  }, [outcome, flipAnim, reduceMotion, flipDurationMs]);
 
   /** Opacity crossfade — RN often fails to show the back face with `rotateY` + `backfaceVisibility` (Android). */
   const frontOpacity = flipAnim.interpolate({
@@ -301,6 +316,7 @@ export default function VerificationScreen() {
       }),
     onSuccess: async (data) => {
       setOutcome(data.valid ? 'success' : 'failure');
+      verifyOutcomeFeedback(Boolean(data.valid));
       setResultDetail({
         message: data.message,
         api: data,
@@ -314,6 +330,7 @@ export default function VerificationScreen() {
     },
     onError: (error: unknown) => {
       setOutcome('failure');
+      verifyOutcomeFeedback(false);
       setResultDetail({
         message: getApiErrorMessage(error),
         api: null,
@@ -456,6 +473,7 @@ export default function VerificationScreen() {
         offlineVerifyBusyRef.current = false;
         setOfflineVerifyBusy(false);
         if (r.ok) {
+          verifyOutcomeFeedback(true);
           setOutcome('success');
           setResultDetail({
             message: r.message,
@@ -467,6 +485,7 @@ export default function VerificationScreen() {
             },
           });
         } else {
+          verifyOutcomeFeedback(false);
           setOutcome('failure');
           setResultDetail({
             message: r.message,
@@ -671,20 +690,24 @@ export default function VerificationScreen() {
               <View style={styles.panel}>
                 <LinearGradient
                   pointerEvents="none"
-                  colors={['rgba(120, 20, 20, 0.35)', 'transparent']}
+                  colors={[color.panelGlow, 'transparent']}
                   style={styles.panelGlow}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                 />
                 <LinearGradient
-                  colors={['#0e1016', '#151821', '#0a0b10']}
+                  colors={[color.panelGradientStart, color.panelGradientMid, color.panelGradientEnd]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.panelGradient}
                 >
                   <View style={styles.panelInner}>
-                    <Text style={styles.eyebrow}>Access control</Text>
-                    <Text style={styles.title}>Enter access code</Text>
+                    <Text style={styles.eyebrow} maxFontSizeMultiplier={1.6}>
+                      Access control
+                    </Text>
+                    <Text style={styles.title} maxFontSizeMultiplier={1.75}>
+                      Enter access code
+                    </Text>
 
                     {/* Web: only QR (front) ↔ result (back) flip; digits + keypad stay below. */}
                     <View style={styles.flipCard}>
@@ -698,8 +721,16 @@ export default function VerificationScreen() {
                         outcome === 'failure' && styles.flipFaceBackFailure,
                       ]}
                       pointerEvents={outcome !== null ? 'auto' : 'none'}
-                      accessibilityRole="summary"
+                      accessible={outcome !== null}
+                      accessibilityRole="alert"
                       accessibilityLiveRegion="polite"
+                      accessibilityLabel={
+                        outcome === null
+                          ? undefined
+                          : outcome === 'success'
+                            ? `Verification succeeded. ${resultDetail?.message ?? ''}`
+                            : `Verification failed. ${resultDetail?.message ?? ''}`
+                      }
                     >
                       <ScrollView
                         style={styles.flipBackScroll}
@@ -756,7 +787,8 @@ export default function VerificationScreen() {
                           (pending || outcome !== null) && styles.qrZoneDisabled,
                         ]}
                         accessibilityRole="button"
-                        accessibilityLabel="Open QR scanner"
+                        accessibilityLabel="Scan gate pass QR code"
+                        accessibilityHint="Opens the camera to scan a visitor gate pass QR code"
                         disabled={pending || outcome !== null}
                         onPress={() => setScanQrVisible(true)}
                       >
@@ -781,7 +813,12 @@ export default function VerificationScreen() {
                     accessibilityLabel="Six-digit access code"
                     style={styles.hiddenInput}
                   />
-                  <View style={styles.digitsRow} pointerEvents="none">
+                  <View
+                    style={styles.digitsRow}
+                    pointerEvents="none"
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                  >
                     {Array.from({ length: CODE_DIGITS }).map((_, i) => {
                       const ch = accessCode[i];
                       const active = i === Math.min(accessCode.length, CODE_DIGITS - 1);
@@ -794,7 +831,15 @@ export default function VerificationScreen() {
                             active ? styles.digitCellActive : null,
                           ]}
                         >
-                          <Text style={styles.digitText}>{ch ?? ''}</Text>
+                          <Text
+                            style={styles.digitText}
+                            maxFontSizeMultiplier={2.2}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.65}
+                            numberOfLines={1}
+                          >
+                            {ch ?? ''}
+                          </Text>
                         </View>
                       );
                     })}
@@ -812,9 +857,10 @@ export default function VerificationScreen() {
                               style={({ pressed }) => [styles.key, pressed && styles.keyPressed]}
                               disabled={pending || outcome !== null || accessCode.length === 0}
                               onPress={() => handleKeypad('clear')}
-                              accessibilityRole="button"
-                              accessibilityLabel="Clear"
-                            >
+                            accessibilityRole="button"
+                            accessibilityLabel="Clear access code"
+                            accessibilityHint="Removes all entered digits"
+                          >
                               <Text style={styles.keyText}>Clear</Text>
                             </Pressable>
                           );
@@ -826,9 +872,10 @@ export default function VerificationScreen() {
                               style={({ pressed }) => [styles.key, pressed && styles.keyPressed]}
                               disabled={pending || outcome !== null || accessCode.length === 0}
                               onPress={() => handleKeypad('del')}
-                              accessibilityRole="button"
-                              accessibilityLabel="Backspace"
-                            >
+                            accessibilityRole="button"
+                            accessibilityLabel="Backspace"
+                            accessibilityHint="Deletes the last digit of the access code"
+                          >
                               <Text style={styles.keyText}>⌫</Text>
                             </Pressable>
                           );
@@ -841,6 +888,7 @@ export default function VerificationScreen() {
                             onPress={() => handleKeypad(key)}
                             accessibilityRole="button"
                             accessibilityLabel={`Digit ${key}`}
+                            accessibilityHint="Adds this digit to the access code"
                           >
                             <Text style={styles.keyText}>{key}</Text>
                           </Pressable>
@@ -851,8 +899,19 @@ export default function VerificationScreen() {
                 </View>
 
                     <View style={styles.statusRow}>
-                      {pending ? <ActivityIndicator color="#58a6ff" style={styles.spinner} /> : null}
-                      <Text style={[styles.statusLine, pending && styles.statusLinePulse]}>{statusText}</Text>
+                      {pending ? (
+                        <>
+                          <ActivityIndicator color={color.accent} style={styles.spinner} />
+                          <SkeletonBlock
+                            height={14}
+                            width={200}
+                            reduceMotion={reduceMotion}
+                            style={styles.statusSkeleton}
+                          />
+                        </>
+                      ) : (
+                        <Text style={[styles.statusLine, pending && styles.statusLinePulse]}>{statusText}</Text>
+                      )}
                     </View>
                   </View>
                 </LinearGradient>
@@ -861,20 +920,24 @@ export default function VerificationScreen() {
               <View style={styles.panel}>
                 <LinearGradient
                   pointerEvents="none"
-                  colors={['rgba(120, 20, 20, 0.35)', 'transparent']}
+                  colors={[color.panelGlow, 'transparent']}
                   style={styles.panelGlow}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                 />
                 <LinearGradient
-                  colors={['#0e1016', '#151821', '#0a0b10']}
+                  colors={[color.panelGradientStart, color.panelGradientMid, color.panelGradientEnd]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.panelGradient}
                 >
                   <View style={styles.panelInner}>
-                    <Text style={styles.eyebrow}>Walk-in visitor</Text>
-                    <Text style={styles.title}>Add instant guest</Text>
+                    <Text style={styles.eyebrow} maxFontSizeMultiplier={1.6}>
+                      Walk-in visitor
+                    </Text>
+                    <Text style={styles.title} maxFontSizeMultiplier={1.75}>
+                      Add instant guest
+                    </Text>
                     <Text style={styles.instantSubtitle}>
                       Search the resident host, then enter visitor details.
                     </Text>
@@ -895,10 +958,7 @@ export default function VerificationScreen() {
                         accessibilityLabel="Search resident host"
                       />
                       {hostSearchLoading ? (
-                        <ActivityIndicator
-                          color="#58a6ff"
-                          style={styles.hostSearchSpinner}
-                        />
+                        <ActivityIndicator color={color.accent} style={styles.hostSearchSpinner} />
                       ) : null}
                       {showHostList ? (
                         <View
@@ -933,6 +993,13 @@ export default function VerificationScreen() {
                         </View>
                       ) : null}
                     </View>
+                    {hostSearchLoading ? (
+                      <View style={styles.hostSearchSkeletonBelow} accessibilityElementsHidden importantForAccessibility="no">
+                        <SkeletonBlock height={10} width="100%" reduceMotion={reduceMotion} />
+                        <SkeletonBlock height={10} width="94%" reduceMotion={reduceMotion} />
+                        <SkeletonBlock height={10} width="82%" reduceMotion={reduceMotion} />
+                      </View>
+                    ) : null}
                     {hostSearchError ? (
                       <Text style={styles.instantErrorText}>
                         {getApiErrorMessage(
@@ -1035,7 +1102,12 @@ export default function VerificationScreen() {
       </KeyboardAvoidingView>
 
       {scanQrVisible && scanQrLoadError ? (
-        <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanQr}>
+        <Modal
+          visible
+          animationType={reduceMotion ? 'none' : 'slide'}
+          presentationStyle="fullScreen"
+          onRequestClose={closeScanQr}
+        >
           <SafeAreaView style={styles.scanQrFallback} edges={['top', 'bottom']}>
             <View style={styles.scanQrFallbackHeader}>
               <Text style={styles.scanQrFallbackTitle}>Scan QR (no camera)</Text>
@@ -1092,6 +1164,7 @@ export default function VerificationScreen() {
             visible: true,
             onClose: closeScanQr,
             pauseScanning: pending || outcome !== null,
+            reduceMotion,
             onValidCode: (normalized: string) => {
               setAccessCode(normalized);
               setScanQrVisible(false);
@@ -1099,7 +1172,12 @@ export default function VerificationScreen() {
           })
         : null}
       {scanQrVisible && !scanQrLoadError && !scanQrModalImpl ? (
-        <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={closeScanQr}>
+        <Modal
+          visible
+          animationType={reduceMotion ? 'none' : 'slide'}
+          presentationStyle="fullScreen"
+          onRequestClose={closeScanQr}
+        >
           <SafeAreaView style={styles.scanQrFallback} edges={['top', 'bottom']}>
             <View style={styles.scanQrFallbackHeader}>
               <Text style={styles.scanQrFallbackTitle}>Scan QR</Text>
@@ -1124,7 +1202,7 @@ export default function VerificationScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#0d1117',
+    backgroundColor: color.bg,
   },
   keyboardAvoid: {
     flex: 1,
@@ -1135,15 +1213,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   warnBanner: {
-    backgroundColor: 'rgba(210, 153, 34, 0.15)',
+    backgroundColor: color.warnBgStrong,
     borderWidth: 1,
-    borderColor: 'rgba(210, 153, 34, 0.45)',
-    borderRadius: 10,
+    borderColor: color.warnBorder,
+    borderRadius: radii.sm,
     padding: 12,
     marginBottom: 16,
   },
   warnText: {
-    color: '#d29922',
+    color: color.warning,
     fontSize: 13,
     lineHeight: 18,
   },
@@ -1152,21 +1230,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     alignSelf: 'flex-end',
-    gap: 10,
-    marginBottom: 16,
+    gap: space.sm,
+    marginBottom: space.lg,
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    paddingHorizontal: space.md,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: color.borderMuted,
+    backgroundColor: color.overlayLow,
   },
   liveDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#3fb950',
-    shadowColor: '#3fb950',
+    backgroundColor: color.success,
+    shadowColor: color.success,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.85,
     shadowRadius: 4,
@@ -1176,7 +1254,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#f85149',
+    backgroundColor: color.danger,
   },
   connectivityLabel: {
     fontSize: 14,
@@ -1184,10 +1262,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   connectivityLabelLive: {
-    color: '#3fb950',
+    color: color.success,
   },
   connectivityLabelOffline: {
-    color: '#f85149',
+    color: color.danger,
   },
   modeSegment: {
     flexDirection: 'row',
@@ -1209,7 +1287,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   modeSegOn: {
-    backgroundColor: 'rgba(88, 166, 255, 0.22)',
+    backgroundColor: color.accentGlow,
   },
   modeSegText: {
     fontSize: 14,
@@ -1217,7 +1295,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.55)',
   },
   modeSegTextOn: {
-    color: '#f0f6fc',
+    color: color.text,
   },
   instantSubtitle: {
     fontSize: 14,
@@ -1255,6 +1333,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
     top: 14,
+  },
+  hostSearchSkeletonBelow: {
+    marginTop: 6,
+    marginBottom: 6,
+    gap: 6,
   },
   hostSuggestList: {
     marginTop: 6,
@@ -1379,18 +1462,18 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   eyebrow: {
-    fontSize: 11,
+    fontSize: font.eyebrow,
     fontWeight: '600',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: 'rgba(255,255,255,0.55)',
+    color: color.overlayTextHi,
     marginBottom: 6,
   },
   title: {
-    fontSize: 22,
+    fontSize: font.titleScreen,
     fontWeight: '700',
-    color: '#f0f6fc',
-    marginBottom: 16,
+    color: color.text,
+    marginBottom: space.lg,
   },
   flipCard: {
     marginBottom: 16,
@@ -1489,29 +1572,30 @@ const styles = StyleSheet.create({
   digitCell: {
     flex: 1,
     aspectRatio: 0.85,
-    maxHeight: 52,
-    borderRadius: 10,
+    maxHeight: 58,
+    minWidth: 44,
+    borderRadius: radii.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderColor: color.borderSubtle,
+    backgroundColor: color.digitBg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   digitCellFilled: {
-    borderColor: 'rgba(88, 166, 255, 0.45)',
-    backgroundColor: 'rgba(88, 166, 255, 0.08)',
+    borderColor: color.accentBorder,
+    backgroundColor: color.accentSoft,
   },
   digitCellActive: {
-    borderColor: 'rgba(88, 166, 255, 0.85)',
-    shadowColor: '#58a6ff',
+    borderColor: color.accent,
+    shadowColor: color.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
   },
   digitText: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#f0f6fc',
+    fontSize: font.digitDisplay,
+    fontWeight: '700',
+    color: color.text,
   },
   keypad: {
     gap: 10,
@@ -1569,24 +1653,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
-    gap: 8,
+    marginTop: space.lg,
+    gap: space.sm,
+    minHeight: 28,
   },
   spinner: {
     marginRight: 4,
   },
+  statusSkeleton: {
+    flexShrink: 1,
+    maxWidth: 220,
+  },
   statusLine: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.55)',
+    fontSize: font.bodySm,
+    color: color.overlayTextHi,
     textAlign: 'center',
     flexShrink: 1,
   },
   statusLinePulse: {
-    color: 'rgba(88, 166, 255, 0.95)',
+    color: color.accent,
   },
   scanQrFallback: {
     flex: 1,
-    backgroundColor: '#0d1117',
+    backgroundColor: color.bg,
     paddingHorizontal: 20,
   },
   scanQrFallbackHeader: {

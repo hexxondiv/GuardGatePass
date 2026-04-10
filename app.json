@@ -5,11 +5,11 @@
     "scheme": "com.hexxondiv.guardgatepass",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/assets/icon.png",
+    "icon": "./src/assets/guard_icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./src/assets/adaptive-icon.png",
+      "image": "./src/assets/guard_icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0d1117"
     },
@@ -19,15 +19,16 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./src/assets/favicon.png",
+        "foregroundImage": "./src/assets/guard_adaptive_foreground.png",
         "backgroundColor": "#0d1117"
       },
       "package": "com.hexxondiv.guardgatepass"
     },
     "web": {
-      "favicon": "./src/assets/favicon.png"
+      "favicon": "./src/assets/guard_icon.png"
     },
     "plugins": [
+      "expo-audio",
       "expo-secure-store",
       [
         "expo-camera",

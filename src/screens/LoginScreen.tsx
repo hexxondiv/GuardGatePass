@@ -14,6 +14,7 @@ import { API_BASE_URL } from '../config/app_constants';
 import { useAuth } from '../context/AuthContext';
 import { getApiErrorMessage } from '../utils/apiErrors';
 import { sanitizePhoneForApi } from '../utils/phoneInput';
+import { color, font, radii, space } from '../theme/tokens';
 
 export default function LoginScreen() {
   const { signIn, isSigningIn } = useAuth();
@@ -44,9 +45,13 @@ export default function LoginScreen() {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Guard Gate Pass</Text>
-        <Text style={styles.subtitle}>Staff sign-in (same as admin web)</Text>
-        <Text style={styles.hint}>
+        <Text style={styles.title} maxFontSizeMultiplier={1.75}>
+          Guard Gate Pass
+        </Text>
+        <Text style={styles.subtitle} maxFontSizeMultiplier={1.65}>
+          Staff sign-in (same as admin web)
+        </Text>
+        <Text style={styles.hint} maxFontSizeMultiplier={1.55}>
           Use the phone and account access code from Gate Pass admin. If you see user not found, that number is not
           registered on the API you are calling — check Users in admin or your EXPO_PUBLIC_DEV_API_BASE_URL (same host as
           the server where the account exists).
@@ -58,7 +63,7 @@ export default function LoginScreen() {
           value={phone}
           onChangeText={setPhone}
           placeholder="Phone number on your account"
-          placeholderTextColor="#6e7681"
+          placeholderTextColor={color.textPlaceholder}
           keyboardType="phone-pad"
           autoCapitalize="none"
           autoCorrect={false}
@@ -72,7 +77,7 @@ export default function LoginScreen() {
           value={accessCode}
           onChangeText={setAccessCode}
           placeholder="Your account access code"
-          placeholderTextColor="#6e7681"
+          placeholderTextColor={color.textPlaceholder}
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
@@ -81,7 +86,9 @@ export default function LoginScreen() {
           textContentType="password"
         />
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <View style={styles.errorSlot} accessibilityLiveRegion="polite">
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+        </View>
 
         <TouchableOpacity
           style={[styles.button, isSigningIn && styles.buttonDisabled]}
@@ -91,14 +98,14 @@ export default function LoginScreen() {
           accessibilityLabel="Sign in"
         >
           {isSigningIn ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={color.text} />
           ) : (
             <Text style={styles.buttonText}>Sign in</Text>
           )}
         </TouchableOpacity>
 
         {__DEV__ ? (
-          <Text style={styles.devApiHint} selectable>
+          <Text style={styles.devApiHint} selectable maxFontSizeMultiplier={1.4}>
             API: {API_BASE_URL}
           </Text>
         ) : null}
@@ -108,37 +115,45 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#0d1117' },
+  flex: { flex: 1, backgroundColor: color.bg },
   scroll: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 24,
+    padding: space.xxl,
     paddingBottom: 40,
   },
-  title: { fontSize: 22, fontWeight: '700', color: '#f0f6fc', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#8b949e', marginBottom: 10 },
-  hint: { fontSize: 12, color: '#6e7681', lineHeight: 18, marginBottom: 20 },
-  label: { fontSize: 13, color: '#8b949e', marginBottom: 6 },
+  title: { fontSize: font.titleScreen, fontWeight: '700', color: color.text, marginBottom: space.sm },
+  subtitle: { fontSize: font.bodySm, color: color.textMuted, marginBottom: 10 },
+  hint: { fontSize: font.caption, color: color.textFaint, lineHeight: 18, marginBottom: space.xl },
+  label: { fontSize: 13, color: color.textMuted, marginBottom: 6 },
   input: {
     borderWidth: 1,
-    borderColor: '#30363d',
-    borderRadius: 8,
+    borderColor: color.border,
+    borderRadius: radii.xs,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#f0f6fc',
-    marginBottom: 16,
-    backgroundColor: '#161b22',
+    color: color.text,
+    marginBottom: space.lg,
+    backgroundColor: color.surface,
+    minHeight: 48,
   },
-  error: { color: '#f85149', marginBottom: 12, fontSize: 14 },
+  errorSlot: {
+    minHeight: 22,
+    marginBottom: space.sm,
+    justifyContent: 'center',
+  },
+  error: { color: color.danger, marginBottom: 0, fontSize: font.bodySm },
   button: {
-    backgroundColor: '#238636',
+    backgroundColor: color.primaryBtn,
     paddingVertical: 14,
-    borderRadius: 8,
+    borderRadius: radii.xs,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: space.sm,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   buttonDisabled: { opacity: 0.7 },
   buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-  devApiHint: { marginTop: 20, fontSize: 11, color: '#484f58' },
+  devApiHint: { marginTop: space.xl, fontSize: 11, color: color.borderStrong },
 });

@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -14,6 +14,7 @@ import AccessDeniedScreen from './src/screens/AccessDeniedScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import { navigationRef } from './src/navigation/RootNavigation';
 import type { RootStackParamList } from './src/navigation/types';
+import { color } from './src/theme/tokens';
 
 const queryClient = new QueryClient();
 const Stack = createStackNavigator<RootStackParamList>();
@@ -44,8 +45,16 @@ function RootNavigator() {
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0d1117' }}>
-        <ActivityIndicator size="large" color="#58a6ff" />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: color.bg,
+        }}
+        accessibilityLabel="Loading"
+      >
+        <ActivityIndicator size="large" color={color.accent} />
       </View>
     );
   }

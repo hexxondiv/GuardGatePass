@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,6 +11,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,7 +26,13 @@ import {
 } from '../services/guardSyncCoordinator';
 import type { StaffJwtPayload } from '../types/auth';
 import type { EstateSummary } from '../utils/accessControl';
+import {
+  GUARD_DEV_API_HOST_OVERRIDE_KEY,
+  getEffectiveApiBaseUrlAsync,
+} from '../config/app_constants';
+import { refreshApiClientBaseUrl } from '../utils/apiClient';
 import { getApiErrorMessage } from '../utils/apiErrors';
+import { color, radii, space } from '../theme/tokens';
 
 function formatSyncTime(iso: string | null): string {
   if (!iso) return 'Never';
@@ -108,6 +116,8 @@ function resolveActiveEstateSync(
   return rowName || jwtName || `Estate ${activeIdNorm}`;
 }
 
+const VERSION_TAP_UNLOCK = 7;
+
 export default function SettingsScreen() {
   const { logout, activeEstateId, availableEstates, selectEstate, roles, authUser } = useAuth();
   const { forceOfflineMode, setForceOfflineMode } = useConnectivityMode();
@@ -116,6 +126,9 @@ export default function SettingsScreen() {
   const [pendingEvents, setPendingEvents] = useState(0);
   const [bootstrapBusy, setBootstrapBusy] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [effectiveApiBase, setEffectiveApiBase] = useState<string>('');
+  const [overrideHostDraft, setOverrideHostDraft] = useState('');
+  const [versionTapCount, setVersionTapCount] = useState(0);
 
   const refreshLocalMeta = useCallback(async () => {
     const meta = await readLastGuardSyncMeta();
@@ -124,11 +137,67 @@ export default function SettingsScreen() {
     setPendingEvents(await countPendingEvents());
   }, []);
 
+  const refreshApiDebug = useCallback(async () => {
+    const resolved = await getEffectiveApiBaseUrlAsync();
+    setEffectiveApiBase(resolved);
+    try {
+      const raw = await SecureStore.getItemAsync(GUARD_DEV_API_HOST_OVERRIDE_KEY);
+      setOverrideHostDraft(raw?.trim() ?? '');
+    } catch {
+      setOverrideHostDraft('');
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       void refreshLocalMeta();
     }, [refreshLocalMeta]),
   );
+
+  useEffect(() => {
+    if (roles.includes('super_admin')) {
+      void refreshApiDebug();
+    }
+  }, [roles, refreshApiDebug]);
+
+  useEffect(() => {
+    if (versionTapCount === 0) {
+      return;
+    }
+    const id = setTimeout(() => setVersionTapCount(0), 3200);
+    return () => clearTimeout(id);
+  }, [versionTapCount]);
+
+  const showHostOverrideUi =
+    __DEV__ || (versionTapCount >= VERSION_TAP_UNLOCK && roles.includes('super_admin'));
+
+  const applyHostOverride = useCallback(async () => {
+    const t = overrideHostDraft.trim();
+    if (!t) {
+      Alert.alert('API host', 'Enter a host URL, or use Clear override.', [{ text: 'OK' }]);
+      return;
+    }
+    try {
+      await SecureStore.setItemAsync(GUARD_DEV_API_HOST_OVERRIDE_KEY, t);
+      await refreshApiClientBaseUrl();
+      setEffectiveApiBase(await getEffectiveApiBaseUrlAsync());
+      Alert.alert('API host', 'Staging host saved. New requests use this base URL.', [{ text: 'OK' }]);
+    } catch (e: unknown) {
+      Alert.alert('Could not save', getApiErrorMessage(e), [{ text: 'OK' }]);
+    }
+  }, [overrideHostDraft]);
+
+  const clearHostOverride = useCallback(async () => {
+    try {
+      await SecureStore.deleteItemAsync(GUARD_DEV_API_HOST_OVERRIDE_KEY);
+      setOverrideHostDraft('');
+      await refreshApiClientBaseUrl();
+      setEffectiveApiBase(await getEffectiveApiBaseUrlAsync());
+      Alert.alert('API host', 'Reverted to default host from build configuration.', [{ text: 'OK' }]);
+    } catch (e: unknown) {
+      Alert.alert('Could not clear', getApiErrorMessage(e), [{ text: 'OK' }]);
+    }
+  }, []);
 
   const activeIdNorm = normalizeEstateId(activeEstateId);
   const syncEstateLabel = useMemo(
@@ -386,6 +455,65 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
+        {roles.includes('super_admin') ? (
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <Ionicons name="code-working-outline" size={20} color="#8b949e" />
+              <Text style={styles.cardTitle}>API (superuser debug)</Text>
+            </View>
+            <Text style={styles.apiDebugExplainer}>
+              Resolved HTTP base used by the app (no JWT or access codes shown). For staging, set a host override
+              below — host only, same contract as EXPO_PUBLIC_DEV_API_BASE_URL in .env.example.
+            </Text>
+            <Text
+              style={styles.apiDebugValue}
+              selectable
+              accessibilityLabel={`Effective API base URL ${effectiveApiBase}`}
+            >
+              {effectiveApiBase || '—'}
+            </Text>
+            {showHostOverrideUi ? (
+              <>
+                <Text style={styles.overrideLabel}>Staging / dev host override</Text>
+                <TextInput
+                  value={overrideHostDraft}
+                  onChangeText={setOverrideHostDraft}
+                  placeholder="e.g. https://your-staging.example.com"
+                  placeholderTextColor={color.textFaint}
+                  style={styles.overrideInput}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable
+                  accessibilityLabel="API host override"
+                />
+                <View style={styles.overrideActions}>
+                  <Pressable
+                    style={({ pressed }) => [styles.overrideBtn, pressed && styles.actionPressed]}
+                    onPress={() => void applyHostOverride()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Save API host override"
+                  >
+                    <Text style={styles.overrideBtnText}>Save host</Text>
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [styles.overrideBtnGhost, pressed && styles.actionPressed]}
+                    onPress={() => void clearHostOverride()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear API host override"
+                  >
+                    <Text style={styles.overrideBtnGhostText}>Clear override</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : !__DEV__ ? (
+              <Text style={styles.secretTapHint}>
+                Tip: tap the version line below {VERSION_TAP_UNLOCK} times to reveal the host override (super admins
+                only).
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
         {availableEstates.length > 1 ? (
           <View style={styles.card}>
             <View style={styles.cardTitleRow}>
@@ -431,7 +559,13 @@ export default function SettingsScreen() {
           <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
 
-        <Text style={styles.versionFoot}>Guard Gate · secure access tools</Text>
+        <Pressable
+          onPress={() => setVersionTapCount((c) => (c >= VERSION_TAP_UNLOCK ? c : c + 1))}
+          accessibilityRole="button"
+          accessibilityLabel="App version footer"
+        >
+          <Text style={styles.versionFoot}>Guard Gate · secure access tools</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -735,5 +869,70 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 12,
     color: '#484f58',
+  },
+  apiDebugExplainer: {
+    fontSize: 13,
+    color: '#6e7681',
+    lineHeight: 19,
+    marginBottom: 10,
+  },
+  apiDebugValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#c9d1d9',
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  overrideLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8b949e',
+    marginBottom: 6,
+  },
+  overrideInput: {
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radii.md,
+    paddingHorizontal: space.md,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: color.text,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    marginBottom: 12,
+  },
+  overrideActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  overrideBtn: {
+    backgroundColor: color.primaryBlue,
+    paddingVertical: 12,
+    paddingHorizontal: space.lg,
+    borderRadius: radii.md,
+  },
+  overrideBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  overrideBtnGhost: {
+    borderWidth: 1,
+    borderColor: 'rgba(88, 166, 255, 0.35)',
+    paddingVertical: 12,
+    paddingHorizontal: space.lg,
+    borderRadius: radii.md,
+  },
+  overrideBtnGhostText: {
+    color: '#58a6ff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  secretTapHint: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#484f58',
+    lineHeight: 17,
+    fontStyle: 'italic',
   },
 });

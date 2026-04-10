@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 const appConfig = (
@@ -60,8 +61,8 @@ function resolvePaystackCallbackBase(origin: string): string {
  * to production — using that here would send the dev client to prod while admin hits localhost.
  * Override with `EXPO_PUBLIC_DEV_API_BASE_URL` (e.g. ngrok, LAN IP, or prod URL when testing prod).
  */
-const apiHostBase =
-  metroDevApiHost.length > 0
+function getDefaultApiHostBaseSync(): string {
+  return metroDevApiHost.length > 0
     ? metroDevApiHost
     : typeof __DEV__ !== 'undefined' && __DEV__
       ? defaultDevApiBase
@@ -70,12 +71,13 @@ const apiHostBase =
         : appConfig?.devMode
           ? defaultDevApiBase
           : 'https://gatepass.hexxondiv.com';
+}
 
-const API_BASE_URL = resolveApiBaseUrl(apiHostBase);
+const API_BASE_URL = resolveApiBaseUrl(getDefaultApiHostBaseSync());
 
 const PAYSTACK_CALLBACK_BASE_URL = appConfig?.paystackCallbackBaseUrl?.length
   ? resolvePaystackCallbackBase(appConfig.paystackCallbackBaseUrl)
-  : resolvePaystackCallbackBase(apiHostBase);
+  : resolvePaystackCallbackBase(getDefaultApiHostBaseSync());
 const APP_SCHEME = 'com.hexxondiv.guardgatepass';
 
 /**
@@ -93,6 +95,25 @@ const DEVICE_ID_STORAGE_KEY = 'guard_device_install_id';
 
 /** When set, app behaves as offline for verify/sync even if the device has network (SecureStore: `1` / absent). */
 const GUARD_FORCE_OFFLINE_MODE_KEY = 'guard_force_offline_mode';
+
+/**
+ * Dev / staging API host override (host only, same rules as `EXPO_PUBLIC_DEV_API_BASE_URL`).
+ * Applied at runtime via `refreshApiClientBaseUrl()` — Settings (gated) writes this key.
+ */
+const GUARD_DEV_API_HOST_OVERRIDE_KEY = 'guard_dev_api_host_override';
+
+async function getEffectiveApiBaseUrlAsync(): Promise<string> {
+  try {
+    const raw = await SecureStore.getItemAsync(GUARD_DEV_API_HOST_OVERRIDE_KEY);
+    const trimmed = raw?.trim();
+    if (trimmed) {
+      return resolveApiBaseUrl(trimmed);
+    }
+  } catch {
+    /* SecureStore unavailable on some targets */
+  }
+  return API_BASE_URL;
+}
 
 const API_ENDPOINTS = {
   /** Staff login (guard / estate_admin / super_admin) — same path as admin web. */
@@ -120,7 +141,10 @@ export {
   API_ENDPOINTS,
   APP_SCHEME,
   DEVICE_ID_STORAGE_KEY,
+  GUARD_DEV_API_HOST_OVERRIDE_KEY,
   GUARD_FORCE_OFFLINE_MODE_KEY,
   PAYSTACK_CALLBACK_BASE_URL,
   SECURE_ACCESS_TOKEN_KEY,
+  getDefaultApiHostBaseSync,
+  getEffectiveApiBaseUrlAsync,
 };

@@ -24,6 +24,8 @@ export type ScanQrModalProps = {
   onValidCode: (normalizedSixDigit: string) => void;
   /** When true, pause camera barcode scanning (verify in flight or outcome visible on parent). */
   pauseScanning?: boolean;
+  /** Respect system reduce motion (modal transition). */
+  reduceMotion?: boolean;
 };
 
 /**
@@ -35,6 +37,7 @@ export default function ScanQrModal({
   onClose,
   onValidCode,
   pauseScanning = false,
+  reduceMotion = false,
 }: ScanQrModalProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [pasteText, setPasteText] = useState('');
@@ -97,7 +100,12 @@ export default function ScanQrModal({
   const showPermissionDenied = permission && !permission.granted && permission.canAskAgain === false;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType={reduceMotion ? 'none' : 'slide'}
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+    >
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Scan QR</Text>
@@ -136,14 +144,18 @@ export default function ScanQrModal({
             )}
           </View>
         ) : visible ? (
-          <View style={styles.cameraWrap}>
+          <View
+            style={styles.cameraWrap}
+            accessibilityLabel="Camera viewfinder"
+            accessibilityHint="Point the camera at a gate pass QR code"
+          >
             <CameraView
               style={StyleSheet.absoluteFill}
               facing="back"
               barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
               onBarcodeScanned={pauseScanning ? undefined : onBarcodeScanned}
             />
-            <View style={styles.scanOverlay} pointerEvents="none">
+            <View style={styles.scanOverlay} pointerEvents="none" importantForAccessibility="no">
               <View style={styles.scanFrame} />
               <Text style={styles.scanHint}>Point at the resident gate pass QR</Text>
             </View>

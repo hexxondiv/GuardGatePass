@@ -1,8 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
 import VerificationScreen from '../screens/VerificationScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import { color } from '../theme/tokens';
 import type { GuardTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<GuardTabParamList>();
@@ -13,11 +14,11 @@ export default function GuardTabs() {
       initialRouteName="Verification"
       screenOptions={{
         headerTitleAlign: 'center',
-        tabBarActiveTintColor: '#58a6ff',
-        tabBarInactiveTintColor: '#8b949e',
-        tabBarStyle: { backgroundColor: '#161b22' },
-        headerStyle: { backgroundColor: '#0d1117' },
-        headerTintColor: '#f0f6fc',
+        tabBarActiveTintColor: color.accent,
+        tabBarInactiveTintColor: color.textMuted,
+        tabBarStyle: { backgroundColor: color.surface },
+        headerStyle: { backgroundColor: color.bg },
+        headerTintColor: color.text,
       }}
     >
       <Tab.Screen
@@ -26,7 +27,10 @@ export default function GuardTabs() {
         options={{
           title: 'Verify',
           tabBarLabel: 'Verify',
-          tabBarIcon: ({ color }) => <TabIcon label="✓" color={color} />,
+          tabBarIcon: ({ color: tint }) => (
+            <Ionicons name="shield-checkmark-outline" size={24} color={tint} accessibilityElementsHidden />
+          ),
+          tabBarAccessibilityLabel: 'Verify access code',
         }}
       />
       <Tab.Screen
@@ -34,13 +38,12 @@ export default function GuardTabs() {
         component={SettingsScreen}
         options={{
           headerShown: false,
-          tabBarIcon: ({ color }) => <TabIcon label="⚙" color={color} />,
+          tabBarIcon: ({ color: tint }) => (
+            <Ionicons name="settings-outline" size={24} color={tint} accessibilityElementsHidden />
+          ),
+          tabBarAccessibilityLabel: 'Settings',
         }}
       />
     </Tab.Navigator>
   );
-}
-
-function TabIcon({ label, color }: { label: string; color: string }) {
-  return <Text style={{ color, fontSize: 18 }}>{label}</Text>;
 }

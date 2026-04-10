@@ -15,6 +15,7 @@ import {
   SECURE_ACCESS_TOKEN_KEY,
 } from '../config/app_constants';
 import { loginStaff } from '../services/authService';
+import { refreshApiClientBaseUrl } from '../utils/apiClient';
 import { fetchAllEstatesSummaries } from '../services/estateService';
 import { runGuardSyncBootstrap } from '../services/guardSyncCoordinator';
 import { clearAllGuardSyncLocalData } from '../storage/guardSyncLocalDb';
@@ -118,6 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let cancelled = false;
 
     async function hydrate() {
+      await refreshApiClientBaseUrl();
       try {
         const token = await SecureStore.getItemAsync(SECURE_ACCESS_TOKEN_KEY);
         if (!token) {

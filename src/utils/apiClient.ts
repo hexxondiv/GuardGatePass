@@ -14,6 +14,7 @@ import * as SecureStore from 'expo-secure-store';
 import {
   ACTIVE_ESTATE_STORAGE_KEY,
   API_BASE_URL,
+  getEffectiveApiBaseUrlAsync,
   SECURE_ACCESS_TOKEN_KEY,
 } from '../config/app_constants';
 import { notifySessionUnauthorized } from '../auth/sessionEvents';
@@ -55,6 +56,11 @@ apiClient.interceptors.request.use(async (config) => {
 
   return config;
 });
+
+/** Apply SecureStore dev host override (if any) before any network calls. */
+export async function refreshApiClientBaseUrl(): Promise<void> {
+  apiClient.defaults.baseURL = await getEffectiveApiBaseUrlAsync();
+}
 
 apiClient.interceptors.response.use(
   (response) => response,
