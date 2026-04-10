@@ -139,6 +139,20 @@ export async function queueOfflineVerifyForAccessCode(
   const expectCheckOut = await getOfflineExpectCheckOut(estateId, raw.gate_pass_id);
   const eventType: 'check_in' | 'check_out' = expectCheckOut ? 'check_out' : 'check_in';
 
+  const isInstant = (raw.access_type ?? '').trim().toLowerCase() === 'instant';
+  if (
+    eventType === 'check_out' &&
+    isInstant &&
+    raw.exit_authorized !== true
+  ) {
+    return {
+      ok: false,
+      message:
+        'This instant guest cannot check out offline until the host authorizes exit. Go online to verify or sync after approval.',
+      requiresOnline: true,
+    };
+  }
+
   const idempotencyKey = newIdempotencyKey();
   const eventTime = new Date().toISOString();
   const event: GuardSyncEventIn = {

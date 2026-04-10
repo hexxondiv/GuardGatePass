@@ -126,6 +126,10 @@ export type GuardSyncPassOut = {
   guest_number?: string | null;
   host_id?: number | null;
   near_expiry?: boolean;
+  /** Lowercase guest-book `access_type` when present (e.g. `instant`). */
+  access_type?: string | null;
+  /** False for instant guests until host authorizes exit (`exit_authorized_at`). */
+  exit_authorized?: boolean;
 };
 
 /** `schemas.GuardSyncBootstrapResponse`. */
