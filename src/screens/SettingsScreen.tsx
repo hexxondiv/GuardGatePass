@@ -33,6 +33,7 @@ import {
 import { refreshApiClientBaseUrl } from '../utils/apiClient';
 import { getApiErrorMessage } from '../utils/apiErrors';
 import { color, radii, space } from '../theme/tokens';
+import { subscribeGuardSyncQueueChanged } from '../utils/guardSyncQueueNotifier';
 
 function formatSyncTime(iso: string | null): string {
   if (!iso) return 'Never';
@@ -153,6 +154,12 @@ export default function SettingsScreen() {
       void refreshLocalMeta();
     }, [refreshLocalMeta]),
   );
+
+  useEffect(() => {
+    return subscribeGuardSyncQueueChanged(() => {
+      void refreshLocalMeta();
+    });
+  }, [refreshLocalMeta]);
 
   useEffect(() => {
     if (roles.includes('super_admin')) {

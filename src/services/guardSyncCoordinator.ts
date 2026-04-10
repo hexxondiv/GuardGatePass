@@ -16,6 +16,7 @@ import {
 } from '../storage/guardSyncLocalDb';
 import type { GuardSyncEventIn, GuardSyncPassOut } from '../types/gateApi';
 import { guardSyncResultUserMessage } from '../utils/guardSyncConflictMessage';
+import { notifyGuardSyncQueueChanged } from '../utils/guardSyncQueueNotifier';
 import { evaluateOfflinePass, findPassByAccessCode } from '../utils/offlinePassVerify';
 import { getOrCreateDeviceId } from '../utils/deviceId';
 import { bootstrapGuardSync, registerGuardDevice, uploadGuardSyncEvents } from './guardSyncService';
@@ -176,6 +177,7 @@ export async function queueOfflineVerifyForAccessCode(
     remaining_uses: hasUsageCap ? Math.max(0, raw.remaining_uses - 1) : raw.remaining_uses,
   };
   await upsertPassSnapshot(estateId, nextPass);
+  notifyGuardSyncQueueChanged();
 
   const label = eventType === 'check_in' ? 'Check-in' : 'Check-out';
   return {
@@ -217,58 +219,62 @@ export type FlushGuardSyncQueueOutcome = {
  * Upload pending offline events. Removes rows whose idempotency keys return a terminal server result.
  */
 export async function flushGuardSyncEventQueue(estateId: string): Promise<FlushGuardSyncQueueOutcome> {
-  const deviceId = await getOrCreateDeviceId();
-  if (!deviceId) {
-    return { uploaded: 0, conflicts: ['Missing device id'], duplicates: 0, accepted: 0 };
-  }
-
-  const pending = await listPendingEvents();
-  if (pending.length === 0) {
-    return { uploaded: 0, conflicts: [], duplicates: 0, accepted: 0 };
-  }
-
-  const conflicts: string[] = [];
-  let accepted = 0;
-  let duplicates = 0;
-  let anyBatchOk = false;
-
-  for (let i = 0; i < pending.length; i += BATCH) {
-    const chunk = pending.slice(i, i + BATCH);
-    let res: Awaited<ReturnType<typeof uploadGuardSyncEvents>>;
-    try {
-      res = await uploadGuardSyncEvents({ device_id: deviceId, events: chunk });
-    } catch {
-      throw new Error('Upload interrupted — remaining events kept for retry.');
+  try {
+    const deviceId = await getOrCreateDeviceId();
+    if (!deviceId) {
+      return { uploaded: 0, conflicts: ['Missing device id'], duplicates: 0, accepted: 0 };
     }
-    anyBatchOk = true;
-    const keysThisBatch = res.results.map((r) => r.idempotency_key);
-    for (const r of res.results) {
-      const st = r.effective_status;
-      if (st === 'accepted') {
-        accepted += 1;
-      } else if (st === 'duplicate_accepted' || st === 'duplicate_conflict') {
-        duplicates += 1;
-      } else if (st === 'conflict') {
-        conflicts.push(guardSyncResultUserMessage(r));
+
+    const pending = await listPendingEvents();
+    if (pending.length === 0) {
+      return { uploaded: 0, conflicts: [], duplicates: 0, accepted: 0 };
+    }
+
+    const conflicts: string[] = [];
+    let accepted = 0;
+    let duplicates = 0;
+    let anyBatchOk = false;
+
+    for (let i = 0; i < pending.length; i += BATCH) {
+      const chunk = pending.slice(i, i + BATCH);
+      let res: Awaited<ReturnType<typeof uploadGuardSyncEvents>>;
+      try {
+        res = await uploadGuardSyncEvents({ device_id: deviceId, events: chunk });
+      } catch {
+        throw new Error('Upload interrupted — remaining events kept for retry.');
+      }
+      anyBatchOk = true;
+      const keysThisBatch = res.results.map((r) => r.idempotency_key);
+      for (const r of res.results) {
+        const st = r.effective_status;
+        if (st === 'accepted') {
+          accepted += 1;
+        } else if (st === 'duplicate_accepted' || st === 'duplicate_conflict') {
+          duplicates += 1;
+        } else if (st === 'conflict') {
+          conflicts.push(guardSyncResultUserMessage(r));
+        }
+      }
+      await deletePendingByIdempotencyKeys(keysThisBatch);
+    }
+
+    if (anyBatchOk) {
+      try {
+        await runGuardSyncBootstrap(estateId);
+      } catch {
+        /* bootstrap refresh is best-effort after upload */
       }
     }
-    await deletePendingByIdempotencyKeys(keysThisBatch);
-  }
 
-  if (anyBatchOk) {
-    try {
-      await runGuardSyncBootstrap(estateId);
-    } catch {
-      /* bootstrap refresh is best-effort after upload */
-    }
+    return {
+      uploaded: pending.length,
+      conflicts,
+      duplicates,
+      accepted,
+    };
+  } finally {
+    notifyGuardSyncQueueChanged();
   }
-
-  return {
-    uploaded: pending.length,
-    conflicts,
-    duplicates,
-    accepted,
-  };
 }
 
 export { countPendingEvents };
