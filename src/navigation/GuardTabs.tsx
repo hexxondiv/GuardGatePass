@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import InstantGuestScreen from '../screens/InstantGuestScreen';
 import VerificationScreen from '../screens/VerificationScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import { color } from '../theme/tokens';
@@ -31,6 +32,18 @@ export default function GuardTabs() {
             <Ionicons name="shield-checkmark-outline" size={24} color={tint} accessibilityElementsHidden />
           ),
           tabBarAccessibilityLabel: 'Verify access code',
+        }}
+      />
+      <Tab.Screen
+        name="InstantGuest"
+        component={InstantGuestScreen}
+        options={{
+          title: 'Walk-in',
+          tabBarLabel: 'Walk-in',
+          tabBarIcon: ({ color: tint }) => (
+            <Ionicons name="person-add-outline" size={24} color={tint} accessibilityElementsHidden />
+          ),
+          tabBarAccessibilityLabel: 'Instant guest walk-in',
         }}
       />
       <Tab.Screen

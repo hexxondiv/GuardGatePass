@@ -33,6 +33,7 @@ const linking = {
               code: (value: string) => value,
             },
           },
+          InstantGuest: 'walk-in',
           Settings: 'settings',
         },
       },

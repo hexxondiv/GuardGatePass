@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useKeepAwake } from 'expo-keep-awake';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -20,7 +21,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useConnectivityMode } from '../context/ConnectivityModeContext';
@@ -30,9 +31,8 @@ import {
   alignOfflineToggleFromOnlineVerify,
   queueOfflineVerifyForAccessCode,
 } from '../services/guardSyncCoordinator';
-import { adminCreateInstantGuest, verifyGatePass } from '../services/gatepassService';
-import { getEstateMembers } from '../services/estateService';
-import type { EstateMember, GatePassVerificationResult } from '../types/gateApi';
+import { verifyGatePass } from '../services/gatepassService';
+import type { GatePassVerificationResult } from '../types/gateApi';
 import {
   CODE_DIGITS,
   DEBOUNCE_MS,
@@ -42,11 +42,13 @@ import {
 } from '../utils/accessCode';
 import { getOrCreateDeviceId } from '../utils/deviceId';
 import { getApiErrorMessage } from '../utils/apiErrors';
-import { sanitizePhoneForApi } from '../utils/phoneInput';
 import { extractQueryParam } from '../utils/linkingUrl';
+import { useVerifyUiScale } from '../utils/verifyUiScale';
 import { preloadVerifyOutcomeSounds, verifyOutcomeFeedback } from '../utils/verifyOutcomeFeedback';
 import SkeletonBlock from '../components/SkeletonBlock';
+import VerifyConnectivityHeaderRight from '../components/VerifyConnectivityHeaderRight';
 import { color, font, radii, space } from '../theme/tokens';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { GuardTabParamList } from '../navigation/types';
 import type { ScanQrModalProps } from './ScanQrModal';
 
@@ -57,54 +59,31 @@ const KEYPAD_ROWS: (string | number)[][] = [
   ['clear', 0, 'del'],
 ];
 
-/** Web verification instant host search (`useDebounce(hostInput, 350)`). */
-const HOST_SEARCH_DEBOUNCE_MS = 350;
-
 /** Web `VerificationConsole.module.css` flip transition. */
 const FLIP_MS = 550;
 
-/** Brief inline success after instant guest (parity with web toast visibility). */
-const INSTANT_SUCCESS_MS = 3500;
-
 export default function VerificationScreen() {
+  useKeepAwake();
+  const ui = useVerifyUiScale();
   const route = useRoute<RouteProp<GuardTabParamList, 'Verification'>>();
+  const navigation = useNavigation<BottomTabNavigationProp<GuardTabParamList>>();
   const queryClient = useQueryClient();
   const { authUser } = useAuth();
   const { activeEstateId } = useEstateContext();
-  const { operationalOnline: isOnline, physicalOnline, forceOfflineMode } = useConnectivityMode();
-  const liveDotOpacity = useRef(new Animated.Value(1)).current;
+  const { operationalOnline: isOnline } = useConnectivityMode();
   const [reduceMotion, setReduceMotion] = useState(false);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => <VerifyConnectivityHeaderRight />,
+    });
+  }, [navigation]);
 
   useEffect(() => {
     const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
     void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
     return () => sub.remove();
   }, []);
-
-  useEffect(() => {
-    if (reduceMotion || !isOnline) {
-      liveDotOpacity.setValue(1);
-      return;
-    }
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(liveDotOpacity, {
-          toValue: 0.28,
-          duration: 700,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(liveDotOpacity, {
-          toValue: 1,
-          duration: 700,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [isOnline, liveDotOpacity, reduceMotion]);
 
   const [accessCode, setAccessCode] = useState('');
   const debouncedCode = useDebounce(accessCode, DEBOUNCE_MS);
@@ -128,16 +107,6 @@ export default function VerificationScreen() {
   /** Manual paste when camera module fails to load (parity with ScanQrModal paste path). */
   const [scanQrPasteText, setScanQrPasteText] = useState('');
 
-  const [consoleMode, setConsoleMode] = useState<'verify' | 'instant'>('verify');
-  const [hostInput, setHostInput] = useState('');
-  const debouncedHostQ = useDebounce(hostInput, HOST_SEARCH_DEBOUNCE_MS);
-  const [selectedHost, setSelectedHost] = useState<{ userId: number; label: string } | null>(null);
-  const [guestName, setGuestName] = useState('');
-  const [guestNumber, setGuestNumber] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [instantFormError, setInstantFormError] = useState<string | null>(null);
-  const [instantSuccessLine, setInstantSuccessLine] = useState<string | null>(null);
-  const instantSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [offlineVerifyBusy, setOfflineVerifyBusy] = useState(false);
   const offlineVerifyBusyRef = useRef(false);
 
@@ -339,86 +308,11 @@ export default function VerificationScreen() {
     },
   });
 
-  const {
-    data: hostSearchData,
-    isFetching: hostSearchLoading,
-    isError: hostSearchError,
-    error: hostSearchErrorDetail,
-  } = useQuery({
-    queryKey: ['verification', 'host-search', activeEstateId, debouncedHostQ],
-    queryFn: () =>
-      getEstateMembers(activeEstateId!, {
-        q: debouncedHostQ.trim(),
-        skip: 0,
-        limit: 12,
-      }),
-    enabled: Boolean(
-      consoleMode === 'instant' &&
-        activeEstateId &&
-        debouncedHostQ.trim().length >= 2 &&
-        !selectedHost,
-    ),
-  });
-
-  const instantMutation = useMutation({
-    mutationFn: () => {
-      const hid = selectedHost!.userId;
-      return adminCreateInstantGuest({
-        host_id: hid,
-        guest_name: guestName.trim(),
-        guest_number: sanitizePhoneForApi(guestNumber),
-        purpose: purpose.trim() || undefined,
-      });
-    },
-    onSuccess: async (data) => {
-      const code = data.access_code;
-      const nameSnapshot = guestName.trim();
-      setInstantFormError(null);
-      setGuestName('');
-      setGuestNumber('');
-      setPurpose('');
-      setSelectedHost(null);
-      setHostInput('');
-      setInstantSuccessLine(
-        code
-          ? `Instant guest added — access code ${code}`
-          : `Instant guest registered for ${nameSnapshot}.`,
-      );
-      if (instantSuccessTimerRef.current) {
-        clearTimeout(instantSuccessTimerRef.current);
-      }
-      instantSuccessTimerRef.current = setTimeout(() => {
-        setInstantSuccessLine(null);
-        instantSuccessTimerRef.current = null;
-      }, INSTANT_SUCCESS_MS);
-      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      await queryClient.invalidateQueries({ queryKey: ['gatepass'] });
-    },
-    onError: (error: unknown) => {
-      setInstantFormError(getApiErrorMessage(error, 'Failed to add instant guest.'));
-    },
-  });
-
   useEffect(() => {
     verifyResetRef.current = () => verifyMutation.reset();
   });
 
   useEffect(() => () => clearTimers(), [clearTimers]);
-
-  useEffect(
-    () => () => {
-      if (instantSuccessTimerRef.current) {
-        clearTimeout(instantSuccessTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (consoleMode === 'verify') {
-      setInstantFormError(null);
-    }
-  }, [consoleMode]);
 
   /** Deep link / navigation `?code=` (web `router.query.code`). */
   useEffect(() => {
@@ -442,9 +336,6 @@ export default function VerificationScreen() {
   }, []);
 
   useEffect(() => {
-    if (consoleMode !== 'verify') {
-      return;
-    }
     if (outcome !== null) {
       return;
     }
@@ -501,7 +392,6 @@ export default function VerificationScreen() {
     verifyMutation.mutate(code);
     return undefined;
   }, [
-    consoleMode,
     debouncedCode,
     isStable,
     outcome,
@@ -522,6 +412,7 @@ export default function VerificationScreen() {
       if (outcome !== null || verifyMutation.isPending) {
         return;
       }
+      Keyboard.dismiss();
       const k = String(key);
       if (k === 'clear') {
         setAccessCode('');
@@ -537,53 +428,6 @@ export default function VerificationScreen() {
     },
     [accessCode.length, outcome, verifyMutation.isPending],
   );
-
-  const handleHostFieldChange = useCallback((value: string) => {
-    setSelectedHost(null);
-    setHostInput(value);
-    setInstantFormError(null);
-  }, []);
-
-  const selectHostMember = useCallback((m: EstateMember) => {
-    const label = `${m.user.name} · ${m.user.phone || '—'}`;
-    setSelectedHost({ userId: m.user_id, label });
-    setHostInput('');
-    setInstantFormError(null);
-    Keyboard.dismiss();
-  }, []);
-
-  const submitInstantGuest = useCallback(() => {
-    if (!selectedHost || !guestName.trim() || !guestNumber.trim() || instantMutation.isPending) {
-      return;
-    }
-    instantMutation.mutate();
-  }, [guestName, guestNumber, instantMutation, selectedHost]);
-
-  const modeToggleDisabled =
-    verifyMutation.isPending ||
-    instantMutation.isPending ||
-    outcome !== null ||
-    offlineVerifyBusy;
-
-  const hostSuggestions = hostSearchData?.items ?? [];
-  const showHostList =
-    Boolean(activeEstateId) &&
-    hostInput.trim().length >= 2 &&
-    !selectedHost &&
-    hostSuggestions.length > 0;
-
-  const showHostEmpty =
-    Boolean(activeEstateId) &&
-    !selectedHost &&
-    !hostSearchLoading &&
-    !hostSearchError &&
-    debouncedHostQ.trim().length >= 2 &&
-    hostInput.trim().length >= 2 &&
-    hostSearchData !== undefined &&
-    hostSuggestions.length === 0;
-
-  const canSubmitInstant =
-    Boolean(selectedHost && guestName.trim() && guestNumber.trim()) && !instantMutation.isPending;
 
   const pending = verifyMutation.isPending || offlineVerifyBusy;
 
@@ -616,12 +460,8 @@ export default function VerificationScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {!activeEstateId && consoleMode === 'verify' ? (
+        <View style={styles.rootFill}>
+          {!activeEstateId ? (
             <View style={styles.warnBanner}>
               <Text style={styles.warnText}>
                 No estate scope — requests may fail until X-Estate-Id is set from your account.
@@ -629,89 +469,33 @@ export default function VerificationScreen() {
             </View>
           ) : null}
 
-          <View
-            style={styles.connectivityBar}
-            accessibilityRole="text"
-            accessibilityLabel={
-              isOnline
-                ? 'Live Mode, online'
-                : !physicalOnline
-                  ? 'Offline Mode, no network'
-                  : 'Offline Mode, manual offline enabled'
-            }
-            accessibilityLiveRegion="polite"
-          >
-            {isOnline ? (
-              <Animated.View style={[styles.liveDot, { opacity: liveDotOpacity }]} />
-            ) : (
-              <View style={styles.offlineDot} />
-            )}
-            <Text style={[styles.connectivityLabel, isOnline ? styles.connectivityLabelLive : styles.connectivityLabelOffline]}>
-              {isOnline ? 'Live Mode' : 'Offline Mode'}
-            </Text>
-          </View>
-
           <View style={styles.shell}>
-            <View
-              style={[styles.modeSegment, modeToggleDisabled && styles.modeSegmentDisabled]}
-              accessibilityRole="tablist"
-            >
-              <Pressable
-                style={[styles.modeSeg, consoleMode === 'verify' && styles.modeSegOn]}
-                disabled={modeToggleDisabled}
-                onPress={() => setConsoleMode('verify')}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: consoleMode === 'verify' }}
-                accessibilityLabel="Verify access code"
+            <View style={styles.panel}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={[color.panelGlow, 'transparent']}
+                style={styles.panelGlow}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+              />
+              <LinearGradient
+                colors={[color.panelGradientStart, color.panelGradientMid, color.panelGradientEnd]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.panelGradient}
               >
-                <Text
-                  style={[styles.modeSegText, consoleMode === 'verify' && styles.modeSegTextOn]}
-                >
-                  Verify
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.modeSeg, consoleMode === 'instant' && styles.modeSegOn]}
-                disabled={modeToggleDisabled || !isOnline}
-                onPress={() => setConsoleMode('instant')}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: consoleMode === 'instant' }}
-                accessibilityLabel="Instant guest walk-in"
-              >
-                <Text
-                  style={[styles.modeSegText, consoleMode === 'instant' && styles.modeSegTextOn]}
-                >
-                  Instant guest
-                </Text>
-              </Pressable>
-            </View>
-
-            {consoleMode === 'verify' ? (
-              <View style={styles.panel}>
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={[color.panelGlow, 'transparent']}
-                  style={styles.panelGlow}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                />
-                <LinearGradient
-                  colors={[color.panelGradientStart, color.panelGradientMid, color.panelGradientEnd]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.panelGradient}
-                >
-                  <View style={styles.panelInner}>
+                <View style={styles.panelInner}>
+                  <View style={styles.titleBlock}>
                     <Text style={styles.eyebrow} maxFontSizeMultiplier={1.6}>
                       Access control
                     </Text>
                     <Text style={styles.title} maxFontSizeMultiplier={1.75}>
                       Enter access code
                     </Text>
+                  </View>
 
-                    {/* Web: only QR (front) ↔ result (back) flip; digits + keypad stay below. */}
-                    <View style={styles.flipCard}>
-                  <View style={styles.flipInner}>
+                  <View style={styles.flipCard}>
+                    <View style={styles.flipInner}>
                     {/* Back draws first; front fades out on top (same timing as web flip). */}
                     <Animated.View
                       style={[
@@ -735,20 +519,32 @@ export default function VerificationScreen() {
                       <ScrollView
                         style={styles.flipBackScroll}
                         contentContainerStyle={styles.flipBackScrollContent}
+                        keyboardShouldPersistTaps="never"
+                        keyboardDismissMode="on-drag"
                         showsVerticalScrollIndicator={false}
                         bounces={false}
                       >
                         {outcome === 'success' ? (
-                          <Ionicons name="checkmark-circle" size={52} color="#3fb950" />
+                          <Ionicons name="checkmark-circle" size={ui.outcomeSuccessIcon} color="#3fb950" />
                         ) : outcome === 'failure' ? (
-                          <Ionicons name="close-circle" size={48} color="#f85149" />
+                          <Ionicons name="close-circle" size={ui.outcomeFailureIcon} color="#f85149" />
                         ) : null}
                         {outcome !== null ? (
                           <>
-                            <Text style={styles.flipOutcomeTitle}>
+                            <Text style={[styles.flipOutcomeTitle, { fontSize: ui.outcomeTitleSize }]}>
                               {outcome === 'success' ? 'Pass verified' : 'Not verified'}
                             </Text>
-                            <Text style={styles.flipOutcomeBody}>{resultDetail?.message}</Text>
+                            <Text
+                              style={[
+                                styles.flipOutcomeBody,
+                                {
+                                  fontSize: ui.outcomeBodySize,
+                                  lineHeight: Math.round(ui.outcomeBodySize * 1.45),
+                                },
+                              ]}
+                            >
+                              {resultDetail?.message}
+                            </Text>
                             {outcome === 'failure' && resultDetail?.api ? (
                               <View style={styles.metaList}>
                                 <Text style={styles.metaLine}>Pass #{resultDetail.api.gate_pass_id}</Text>
@@ -790,11 +586,16 @@ export default function VerificationScreen() {
                         accessibilityLabel="Scan gate pass QR code"
                         accessibilityHint="Opens the camera to scan a visitor gate pass QR code"
                         disabled={pending || outcome !== null}
-                        onPress={() => setScanQrVisible(true)}
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          setScanQrVisible(true);
+                        }}
                       >
-                        <Ionicons name="qr-code-outline" size={36} color="rgba(255,255,255,0.45)" />
-                        <Text style={styles.qrLabel}>Scan QR</Text>
-                        <Text style={styles.qrHint}>Tap to scan with camera or paste JSON in the scanner</Text>
+                        <Ionicons name="qr-code-outline" size={ui.qrIcon} color="rgba(255,255,255,0.45)" />
+                        <Text style={[styles.qrLabel, { fontSize: ui.qrLabelSize }]}>Scan QR</Text>
+                        <Text style={[styles.qrHint, { fontSize: ui.qrHintSize }]}>
+                          Tap to scan with camera or paste JSON in the scanner
+                        </Text>
                       </Pressable>
                     </Animated.View>
                   </View>
@@ -810,6 +611,7 @@ export default function VerificationScreen() {
                     editable={!pending && outcome === null}
                     textContentType="oneTimeCode"
                     autoComplete="sms-otp"
+                    showSoftInputOnFocus={false}
                     accessibilityLabel="Six-digit access code"
                     style={styles.hiddenInput}
                   />
@@ -832,7 +634,7 @@ export default function VerificationScreen() {
                           ]}
                         >
                           <Text
-                            style={styles.digitText}
+                            style={[styles.digitText, { fontSize: ui.digitFontSize }]}
                             maxFontSizeMultiplier={2.2}
                             adjustsFontSizeToFit
                             minimumFontScale={0.65}
@@ -861,7 +663,7 @@ export default function VerificationScreen() {
                             accessibilityLabel="Clear access code"
                             accessibilityHint="Removes all entered digits"
                           >
-                              <Text style={styles.keyText}>Clear</Text>
+                              <Text style={[styles.keyText, { fontSize: ui.keyFontSize }]}>Clear</Text>
                             </Pressable>
                           );
                         }
@@ -876,7 +678,7 @@ export default function VerificationScreen() {
                             accessibilityLabel="Backspace"
                             accessibilityHint="Deletes the last digit of the access code"
                           >
-                              <Text style={styles.keyText}>⌫</Text>
+                              <Text style={[styles.keyText, { fontSize: ui.keyFontSize }]}>⌫</Text>
                             </Pressable>
                           );
                         }
@@ -890,7 +692,7 @@ export default function VerificationScreen() {
                             accessibilityLabel={`Digit ${key}`}
                             accessibilityHint="Adds this digit to the access code"
                           >
-                            <Text style={styles.keyText}>{key}</Text>
+                            <Text style={[styles.keyText, { fontSize: ui.keyFontSize }]}>{key}</Text>
                           </Pressable>
                         );
                       })}
@@ -916,189 +718,8 @@ export default function VerificationScreen() {
                   </View>
                 </LinearGradient>
               </View>
-            ) : activeEstateId && isOnline ? (
-              <View style={styles.panel}>
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={[color.panelGlow, 'transparent']}
-                  style={styles.panelGlow}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                />
-                <LinearGradient
-                  colors={[color.panelGradientStart, color.panelGradientMid, color.panelGradientEnd]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.panelGradient}
-                >
-                  <View style={styles.panelInner}>
-                    <Text style={styles.eyebrow} maxFontSizeMultiplier={1.6}>
-                      Walk-in visitor
-                    </Text>
-                    <Text style={styles.title} maxFontSizeMultiplier={1.75}>
-                      Add instant guest
-                    </Text>
-                    <Text style={styles.instantSubtitle}>
-                      Search the resident host, then enter visitor details.
-                    </Text>
-
-                    <Text style={styles.fieldLabel}>Resident host</Text>
-                    <View style={styles.hostSuggestWrap}>
-                      <TextInput
-                        value={selectedHost ? selectedHost.label : hostInput}
-                        onChangeText={handleHostFieldChange}
-                        placeholder={
-                          selectedHost ? '' : 'Type name or phone (min. 2 characters)'
-                        }
-                        placeholderTextColor="rgba(255,255,255,0.35)"
-                        style={styles.fieldInput}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        editable={!instantMutation.isPending && Boolean(activeEstateId)}
-                        accessibilityLabel="Search resident host"
-                      />
-                      {hostSearchLoading ? (
-                        <ActivityIndicator color={color.accent} style={styles.hostSearchSpinner} />
-                      ) : null}
-                      {showHostList ? (
-                        <View
-                          style={styles.hostSuggestList}
-                          accessibilityRole="radiogroup"
-                          accessibilityLabel="Matching residents"
-                        >
-                          <ScrollView
-                            nestedScrollEnabled
-                            keyboardShouldPersistTaps="handled"
-                            style={styles.hostSuggestScroll}
-                          >
-                            {hostSuggestions.map((m) => (
-                              <Pressable
-                                key={m.id}
-                                style={({ pressed }) => [
-                                  styles.hostSuggestItem,
-                                  pressed && styles.hostSuggestItemPressed,
-                                ]}
-                                onPress={() => selectHostMember(m)}
-                                accessibilityRole="radio"
-                                accessibilityLabel={`${m.user.name}, ${m.user.phone || 'no phone'}`}
-                              >
-                                <Text style={styles.hostSuggestName}>{m.user.name}</Text>
-                                <Text style={styles.hostSuggestMeta}>
-                                  {m.user.phone || '—'}
-                                  {m.role?.name ? ` · ${m.role.name}` : ''}
-                                </Text>
-                              </Pressable>
-                            ))}
-                          </ScrollView>
-                        </View>
-                      ) : null}
-                    </View>
-                    {hostSearchLoading ? (
-                      <View style={styles.hostSearchSkeletonBelow} accessibilityElementsHidden importantForAccessibility="no">
-                        <SkeletonBlock height={10} width="100%" reduceMotion={reduceMotion} />
-                        <SkeletonBlock height={10} width="94%" reduceMotion={reduceMotion} />
-                        <SkeletonBlock height={10} width="82%" reduceMotion={reduceMotion} />
-                      </View>
-                    ) : null}
-                    {hostSearchError ? (
-                      <Text style={styles.instantErrorText}>
-                        {getApiErrorMessage(
-                          hostSearchErrorDetail,
-                          'Could not load residents for search.',
-                        )}
-                      </Text>
-                    ) : null}
-                    {showHostEmpty ? (
-                      <Text style={styles.hostSearchEmptyText}>No matching residents in this estate.</Text>
-                    ) : null}
-
-                    <Text style={styles.fieldLabel}>Visitor name</Text>
-                    <TextInput
-                      value={guestName}
-                      onChangeText={(t) => {
-                        setGuestName(t);
-                        setInstantFormError(null);
-                      }}
-                      placeholder="Full name"
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                      style={styles.fieldInput}
-                      editable={!instantMutation.isPending}
-                      accessibilityLabel="Visitor name"
-                    />
-
-                    <Text style={styles.fieldLabel}>Phone or plate</Text>
-                    <TextInput
-                      value={guestNumber}
-                      onChangeText={(t) => {
-                        setGuestNumber(t);
-                        setInstantFormError(null);
-                      }}
-                      placeholder="Phone or vehicle plate"
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                      style={styles.fieldInput}
-                      editable={!instantMutation.isPending}
-                      accessibilityLabel="Guest phone or plate"
-                    />
-
-                    <Text style={styles.fieldLabel}>
-                      Purpose <Text style={styles.fieldLabelOptional}>(optional)</Text>
-                    </Text>
-                    <TextInput
-                      value={purpose}
-                      onChangeText={setPurpose}
-                      placeholder="Visit purpose"
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                      style={styles.fieldInput}
-                      editable={!instantMutation.isPending}
-                      accessibilityLabel="Visit purpose optional"
-                    />
-
-                    {instantFormError ? (
-                      <Text style={styles.instantErrorText}>{instantFormError}</Text>
-                    ) : null}
-                    {instantSuccessLine ? (
-                      <Text style={styles.instantSuccessText}>{instantSuccessLine}</Text>
-                    ) : null}
-
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.submitInstant,
-                        !canSubmitInstant && styles.submitInstantDisabled,
-                        pressed && canSubmitInstant && styles.submitInstantPressed,
-                      ]}
-                      disabled={!canSubmitInstant}
-                      onPress={submitInstantGuest}
-                      accessibilityRole="button"
-                      accessibilityLabel="Create instant guest pass"
-                    >
-                      {instantMutation.isPending ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.submitInstantText}>Create instant guest pass</Text>
-                      )}
-                    </Pressable>
-                  </View>
-                </LinearGradient>
-              </View>
-            ) : activeEstateId && !isOnline ? (
-              <View style={styles.instantBlockedCard}>
-                <Text style={styles.instantBlockedTitle}>Instant guest unavailable offline</Text>
-                <Text style={styles.instantBlockedBody}>
-                  Walk-in guests are created on the server. Connect to the network or use Verify with a cached pass.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.instantBlockedCard}>
-                <Text style={styles.instantBlockedTitle}>No estate scope</Text>
-                <Text style={styles.instantBlockedBody}>
-                  No estate scope on this session — requests may fail until X-Estate-Id is set from your
-                  account. Select an estate scope to search residents and add walk-in guests. Use Settings to
-                  choose an active estate, or switch to Verify.
-                </Text>
-              </View>
-            )}
           </View>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
 
       {scanQrVisible && scanQrLoadError ? (
@@ -1117,7 +738,7 @@ export default function VerificationScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Ionicons name="close" size={28} color="#f0f6fc" />
+                <Ionicons name="close" size={ui.modalCloseIcon} color="#f0f6fc" />
               </Pressable>
             </View>
             <ScrollView
@@ -1187,7 +808,7 @@ export default function VerificationScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Ionicons name="close" size={28} color="#f0f6fc" />
+                <Ionicons name="close" size={ui.modalCloseIcon} color="#f0f6fc" />
               </Pressable>
             </View>
             <ActivityIndicator color="#58a6ff" size="large" style={{ marginTop: 24 }} />
@@ -1207,10 +828,11 @@ const styles = StyleSheet.create({
   keyboardAvoid: {
     flex: 1,
   },
-  scroll: {
+  rootFill: {
+    flex: 1,
+    minHeight: 0,
     paddingHorizontal: 16,
-    paddingBottom: 24,
-    flexGrow: 1,
+    paddingBottom: 8,
   },
   warnBanner: {
     backgroundColor: color.warnBgStrong,
@@ -1225,215 +847,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  connectivityBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    alignSelf: 'flex-end',
-    gap: space.sm,
-    marginBottom: space.lg,
-    paddingVertical: 10,
-    paddingHorizontal: space.md,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: color.borderMuted,
-    backgroundColor: color.overlayLow,
-  },
-  liveDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: color.success,
-    shadowColor: color.success,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.85,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  offlineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: color.danger,
-  },
-  connectivityLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  connectivityLabelLive: {
-    color: color.success,
-  },
-  connectivityLabelOffline: {
-    color: color.danger,
-  },
-  modeSegment: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  modeSegmentDisabled: {
-    opacity: 0.55,
-  },
-  modeSeg: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-  },
-  modeSegOn: {
-    backgroundColor: color.accentGlow,
-  },
-  modeSegText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.55)',
-  },
-  modeSegTextOn: {
-    color: color.text,
-  },
-  instantSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.55)',
-    marginBottom: 16,
-    lineHeight: 20,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.65)',
-    marginBottom: 6,
-    marginTop: 4,
-  },
-  fieldLabelOptional: {
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.45)',
-  },
-  fieldInput: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#f0f6fc',
-    backgroundColor: 'rgba(0,0,0,0.2)',
-  },
-  hostSuggestWrap: {
-    position: 'relative',
-    marginBottom: 8,
-    zIndex: 2,
-  },
-  hostSearchSpinner: {
-    position: 'absolute',
-    right: 12,
-    top: 14,
-  },
-  hostSearchSkeletonBelow: {
-    marginTop: 6,
-    marginBottom: 6,
-    gap: 6,
-  },
-  hostSuggestList: {
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 10,
-    backgroundColor: 'rgba(14, 16, 22, 0.98)',
-    maxHeight: 220,
-    overflow: 'hidden',
-  },
-  hostSuggestScroll: {
-    maxHeight: 220,
-  },
-  hostSuggestItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  hostSuggestItemPressed: {
-    backgroundColor: 'rgba(88, 166, 255, 0.12)',
-  },
-  hostSuggestName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#f0f6fc',
-  },
-  hostSuggestMeta: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 2,
-  },
-  hostSearchEmptyText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.45)',
-    marginBottom: 8,
-    fontStyle: 'italic',
-  },
-  instantErrorText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#f85149',
-    lineHeight: 20,
-  },
-  instantSuccessText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#3fb950',
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  submitInstant: {
-    marginTop: 20,
-    backgroundColor: '#238636',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  submitInstantPressed: {
-    opacity: 0.9,
-  },
-  submitInstantDisabled: {
-    backgroundColor: 'rgba(35, 134, 54, 0.35)',
-  },
-  submitInstantText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  instantBlockedCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(210, 153, 34, 0.4)',
-    backgroundColor: 'rgba(210, 153, 34, 0.1)',
-    padding: 20,
-    marginTop: 4,
-  },
-  instantBlockedTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#d29922',
-    marginBottom: 8,
-  },
-  instantBlockedBody: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.75)',
-    lineHeight: 20,
-  },
   shell: {
     maxWidth: 480,
     width: '100%',
     alignSelf: 'center',
+    flex: 1,
+    minHeight: 0,
   },
   panel: {
+    flex: 1,
+    minHeight: 0,
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
@@ -1453,13 +876,21 @@ const styles = StyleSheet.create({
     zIndex: 0,
   },
   panelGradient: {
+    flex: 1,
+    minHeight: 0,
     borderRadius: 20,
   },
   panelInner: {
+    flex: 1,
+    minHeight: 0,
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 24,
+    paddingTop: 12,
+    paddingBottom: 12,
     zIndex: 1,
+    justifyContent: 'space-between',
+  },
+  titleBlock: {
+    flexShrink: 0,
   },
   eyebrow: {
     fontSize: font.eyebrow,
@@ -1473,16 +904,19 @@ const styles = StyleSheet.create({
     fontSize: font.titleScreen,
     fontWeight: '700',
     color: color.text,
-    marginBottom: space.lg,
+    marginBottom: space.sm,
   },
   flipCard: {
-    marginBottom: 16,
+    flex: 1,
+    minHeight: 0,
     width: '100%',
+    marginBottom: 8,
   },
   flipInner: {
     position: 'relative',
+    flex: 1,
+    minHeight: 0,
     width: '100%',
-    minHeight: 200,
   },
   flipFaceFront: {
     position: 'absolute',
@@ -1490,7 +924,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    minHeight: 200,
     width: '100%',
     zIndex: 2,
     alignItems: 'center',
@@ -1502,7 +935,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    minHeight: 200,
     width: '100%',
     zIndex: 1,
     borderRadius: 16,
@@ -1519,20 +951,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(14, 16, 22, 0.96)',
   },
   flipBackScroll: {
-    maxHeight: 220,
+    flex: 1,
+    minHeight: 0,
     width: '100%',
   },
   flipBackScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 16,
   },
   qrZone: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    minHeight: 200,
-    paddingVertical: 16,
+    minHeight: 100,
+    paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1,
     borderStyle: 'dashed',
@@ -1544,18 +980,17 @@ const styles = StyleSheet.create({
   },
   qrLabel: {
     marginTop: 8,
-    fontSize: 14,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.82)',
   },
   qrHint: {
     marginTop: 4,
-    fontSize: 12,
     color: 'rgba(255,255,255,0.45)',
   },
   digitsWrap: {
     position: 'relative',
-    marginBottom: 16,
+    flexShrink: 0,
+    marginBottom: 8,
   },
   hiddenInput: {
     position: 'absolute',
@@ -1593,12 +1028,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   digitText: {
-    fontSize: font.digitDisplay,
     fontWeight: '700',
     color: color.text,
   },
   keypad: {
-    gap: 10,
+    flexShrink: 0,
+    gap: 8,
   },
   keypadRow: {
     flexDirection: 'row',
@@ -1606,7 +1041,7 @@ const styles = StyleSheet.create({
   },
   key: {
     flex: 1,
-    minHeight: 56,
+    minHeight: 48,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
@@ -1618,23 +1053,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
   keyText: {
-    fontSize: 22,
     fontWeight: '600',
     color: '#f0f6fc',
   },
   flipOutcomeTitle: {
     marginTop: 12,
-    fontSize: 17,
     fontWeight: '700',
     color: '#f0f6fc',
     textAlign: 'center',
   },
   flipOutcomeBody: {
     marginTop: 8,
-    fontSize: 13,
     color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
-    lineHeight: 20,
   },
   metaList: {
     marginTop: 16,
@@ -1653,9 +1084,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: space.lg,
+    flexShrink: 0,
+    marginTop: 6,
     gap: space.sm,
-    minHeight: 28,
+    minHeight: 24,
   },
   spinner: {
     marginRight: 4,

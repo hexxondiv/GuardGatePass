@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { isCompleteAccessCode, rawScanToAccessCode } from '../utils/accessCode';
+import { useVerifyUiScale } from '../utils/verifyUiScale';
 
 /** Ignore duplicate camera frames for the same payload (avoids repeated alerts / duplicate work). */
 const SAME_RAW_DEDUP_MS = 650;
@@ -39,6 +40,7 @@ export default function ScanQrModal({
   pauseScanning = false,
   reduceMotion = false,
 }: ScanQrModalProps) {
+  const ui = useVerifyUiScale();
   const [permission, requestPermission] = useCameraPermissions();
   const [pasteText, setPasteText] = useState('');
   const lastRawRef = useRef<string | null>(null);
@@ -115,7 +117,7 @@ export default function ScanQrModal({
             accessibilityRole="button"
             accessibilityLabel="Close scan"
           >
-            <Ionicons name="close" size={28} color="#f0f6fc" />
+            <Ionicons name="close" size={ui.modalCloseIcon} color="#f0f6fc" />
           </Pressable>
         </View>
 
