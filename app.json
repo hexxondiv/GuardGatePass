@@ -22,13 +22,24 @@
         "foregroundImage": "./src/assets/guard_adaptive_foreground.png",
         "backgroundColor": "#0d1117"
       },
-      "package": "com.hexxondiv.guardgatepass"
+      "package": "com.hexxondiv.guardgatepass",
+      "permissions": [
+        "android.permission.WAKE_LOCK"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./src/assets/guard_icon.png"
     },
     "plugins": [
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-secure-store",
       [
         "expo-camera",

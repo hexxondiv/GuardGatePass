@@ -5,7 +5,7 @@ import { InteractionManager, Platform } from 'react-native';
 let audioModePromise: Promise<void> | null = null;
 type GuardAudioPlayer = ReturnType<typeof createAudioPlayer>;
 
-const SUCCESS_SOURCE = require('../assets/sounds/Granted.mp3');
+const SUCCESS_SOURCE = require('../assets/sounds/Granted_New.wav');
 const DENIED_SOURCE = require('../assets/sounds/Denied.mp3');
 
 let successPlayer: GuardAudioPlayer | null = null;

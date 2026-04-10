@@ -47,12 +47,19 @@ export default function ScanQrModal({
   const lastRawAtRef = useRef(0);
 
   useEffect(() => {
-    if (visible) {
-      setPasteText('');
-      lastRawRef.current = null;
-      void requestPermission();
+    if (!visible) {
+      return;
     }
-  }, [visible, requestPermission]);
+    setPasteText('');
+    lastRawRef.current = null;
+    if (permission?.granted) {
+      return;
+    }
+    if (permission != null && !permission.granted && permission.canAskAgain === false) {
+      return;
+    }
+    void requestPermission();
+  }, [visible, permission?.granted, permission?.canAskAgain, requestPermission]);
 
   const tryAcceptRaw = useCallback(
     (raw: string) => {

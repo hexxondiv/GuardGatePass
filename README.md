@@ -59,7 +59,7 @@ Use the APK from an **internal** EAS build, or `adb install` after a local `expo
 
 - **Design tokens:** `src/theme/tokens.ts` — shared colors, radii, spacing for Verify, Instant Guest, Settings, and login.
 - **Motion:** verify flip and live-dot pulse respect **Reduce motion** (`AccessibilityInfo`).
-- **Haptics + audio:** `verifyOutcomeFeedback` fires haptics immediately; sound is scheduled with `InteractionManager.runAfterInteractions` (`expo-audio` seek + play) so it does not block verify UI, flip animation, or reset timers. Sounds are preloaded when the Verify screen mounts (`preloadVerifyOutcomeSounds`). Cues: `src/assets/sounds/Granted.mp3` (success) and `Denied.mp3` (failure).
+- **Haptics + audio:** `verifyOutcomeFeedback` fires haptics immediately; sound is scheduled with `InteractionManager.runAfterInteractions` (`expo-audio` seek + play) so it does not block verify UI, flip animation, or reset timers. Sounds are preloaded when the Verify screen mounts (`preloadVerifyOutcomeSounds`). Cues: `src/assets/sounds/Granted_New.wav` (success) and `Denied.mp3` (failure).
 - **Screen reader:** keypad, scan zone, and outcome views expose labels/hints; scan modal labels the viewfinder.
 - **Icons / splash:** distinct from the resident app — `scripts/generate_guard_assets.py` (amber shield on dark background). Regenerate after changing art:
   ```bash
