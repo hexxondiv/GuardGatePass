@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import GuardSyncConnectivity from './src/components/GuardSyncConnectivity';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { ConnectivityModeProvider } from './src/context/ConnectivityModeContext';
 import { EstateProvider } from './src/context/EstateContext';
 import GuardTabs from './src/navigation/GuardTabs';
 import AccessDeniedScreen from './src/screens/AccessDeniedScreen';
@@ -77,12 +78,14 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <EstateProvider>
-          <GuardSyncConnectivity />
-          <SafeAreaProvider>
-            <NavigationContainer ref={navigationRef} linking={linking}>
-              <RootNavigator />
-            </NavigationContainer>
-          </SafeAreaProvider>
+          <ConnectivityModeProvider>
+            <GuardSyncConnectivity />
+            <SafeAreaProvider>
+              <NavigationContainer ref={navigationRef} linking={linking}>
+                <RootNavigator />
+              </NavigationContainer>
+            </SafeAreaProvider>
+          </ConnectivityModeProvider>
         </EstateProvider>
       </AuthProvider>
     </QueryClientProvider>

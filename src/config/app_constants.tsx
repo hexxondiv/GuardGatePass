@@ -91,6 +91,9 @@ const ACTIVE_ESTATE_STORAGE_KEY = 'active_estate_id';
 /** Stable install id for `device_id` on verify / guard sync (Workstreams 4 & 7). */
 const DEVICE_ID_STORAGE_KEY = 'guard_device_install_id';
 
+/** When set, app behaves as offline for verify/sync even if the device has network (SecureStore: `1` / absent). */
+const GUARD_FORCE_OFFLINE_MODE_KEY = 'guard_force_offline_mode';
+
 const API_ENDPOINTS = {
   /** Staff login (guard / estate_admin / super_admin) — same path as admin web. */
   LOGIN_ADMIN: `/login/admin`,
@@ -117,6 +120,7 @@ export {
   API_ENDPOINTS,
   APP_SCHEME,
   DEVICE_ID_STORAGE_KEY,
+  GUARD_FORCE_OFFLINE_MODE_KEY,
   PAYSTACK_CALLBACK_BASE_URL,
   SECURE_ACCESS_TOKEN_KEY,
 };

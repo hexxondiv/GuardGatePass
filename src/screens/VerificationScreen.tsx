@@ -22,9 +22,9 @@ import {
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { useConnectivityMode } from '../context/ConnectivityModeContext';
 import { useEstateContext } from '../context/EstateContext';
 import { useDebounce } from '../hooks/useDebounce';
-import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import {
   alignOfflineToggleFromOnlineVerify,
   queueOfflineVerifyForAccessCode,
@@ -73,7 +73,7 @@ export default function VerificationScreen() {
   const queryClient = useQueryClient();
   const { authUser } = useAuth();
   const { activeEstateId } = useEstateContext();
-  const isOnline = useNetworkStatus();
+  const { operationalOnline: isOnline, physicalOnline, forceOfflineMode } = useConnectivityMode();
   const liveDotOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -613,7 +613,13 @@ export default function VerificationScreen() {
           <View
             style={styles.connectivityBar}
             accessibilityRole="text"
-            accessibilityLabel={isOnline ? 'Live Mode, online' : 'Offline Mode, using cached data'}
+            accessibilityLabel={
+              isOnline
+                ? 'Live Mode, online'
+                : !physicalOnline
+                  ? 'Offline Mode, no network'
+                  : 'Offline Mode, manual offline enabled'
+            }
             accessibilityLiveRegion="polite"
           >
             {isOnline ? (
@@ -1144,6 +1150,8 @@ const styles = StyleSheet.create({
   connectivityBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    alignSelf: 'flex-end',
     gap: 10,
     marginBottom: 16,
     paddingVertical: 10,

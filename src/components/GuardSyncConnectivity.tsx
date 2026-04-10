@@ -2,6 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import React, { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useConnectivityMode } from '../context/ConnectivityModeContext';
 import { flushGuardSyncEventQueue } from '../services/guardSyncCoordinator';
 
 /**
@@ -10,6 +11,7 @@ import { flushGuardSyncEventQueue } from '../services/guardSyncCoordinator';
  */
 export default function GuardSyncConnectivity() {
   const { userToken, activeEstateId, isStaffAppUser } = useAuth();
+  const { operationalOnline } = useConnectivityMode();
   const flushingRef = useRef(false);
 
   useEffect(() => {
@@ -19,6 +21,7 @@ export default function GuardSyncConnectivity() {
     const estateId: string = activeEstateId;
 
     async function flushIfNeeded() {
+      if (!operationalOnline) return;
       if (flushingRef.current) return;
       flushingRef.current = true;
       try {
@@ -43,21 +46,33 @@ export default function GuardSyncConnectivity() {
     }
 
     const unsub = NetInfo.addEventListener((state) => {
-      if (state.isConnected && state.isInternetReachable !== false) {
+      if (
+        operationalOnline &&
+        state.isConnected &&
+        state.isInternetReachable !== false
+      ) {
         void flushIfNeeded();
       }
     });
 
     void NetInfo.fetch().then((state) => {
-      if (state.isConnected && state.isInternetReachable !== false) {
+      if (
+        operationalOnline &&
+        state.isConnected &&
+        state.isInternetReachable !== false
+      ) {
         void flushIfNeeded();
       }
     });
 
+    if (operationalOnline) {
+      void flushIfNeeded();
+    }
+
     return () => {
       unsub();
     };
-  }, [userToken, activeEstateId, isStaffAppUser]);
+  }, [userToken, activeEstateId, isStaffAppUser, operationalOnline]);
 
   return null;
 }

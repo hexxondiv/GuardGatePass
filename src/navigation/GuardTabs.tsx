@@ -33,6 +33,7 @@ export default function GuardTabs() {
         name="Settings"
         component={SettingsScreen}
         options={{
+          headerShown: false,
           tabBarIcon: ({ color }) => <TabIcon label="⚙" color={color} />,
         }}
       />

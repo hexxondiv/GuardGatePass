@@ -74,3 +74,11 @@ export async function fetchAllEstatesSummaries(): Promise<EstateSummary[]> {
 
   return Array.from(byId.values());
 }
+
+/**
+ * `GET /estates/{estate_id}` — canonical name for the active estate when JWT / list only have a placeholder label.
+ */
+export async function fetchEstateById(estateId: number | string): Promise<{ id: number; name: string }> {
+  const res = await apiClient.get<{ id: number; name: string }>(API_ENDPOINTS.ESTATE(estateId));
+  return res.data;
+}

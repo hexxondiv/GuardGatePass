@@ -11,6 +11,7 @@ import { jwtDecode } from 'jwt-decode';
 import { setSessionUnauthorizedHandler } from '../auth/sessionEvents';
 import {
   ACTIVE_ESTATE_STORAGE_KEY,
+  GUARD_FORCE_OFFLINE_MODE_KEY,
   SECURE_ACCESS_TOKEN_KEY,
 } from '../config/app_constants';
 import { loginStaff } from '../services/authService';
@@ -215,6 +216,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     let cancelled = false;
     void (async () => {
+      try {
+        const forced = await SecureStore.getItemAsync(GUARD_FORCE_OFFLINE_MODE_KEY);
+        if (forced === '1' || forced === 'true') {
+          return;
+        }
+      } catch {
+        /* continue with bootstrap */
+      }
       const out = await runGuardSyncBootstrap(activeEstateId);
       if (!cancelled && !out.ok && __DEV__) {
         console.warn('[guard sync bootstrap]', out.message);
