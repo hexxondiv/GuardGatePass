@@ -68,7 +68,7 @@ export default function VerificationScreen() {
   const route = useRoute<RouteProp<GuardTabParamList, 'Verification'>>();
   const navigation = useNavigation<BottomTabNavigationProp<GuardTabParamList>>();
   const queryClient = useQueryClient();
-  const { authUser } = useAuth();
+  const { authUser, barrierWebhookUrl } = useAuth();
   const { activeEstateId } = useEstateContext();
   const { operationalOnline: isOnline } = useConnectivityMode();
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -292,6 +292,9 @@ export default function VerificationScreen() {
       });
       if (activeEstateId && data.gate_pass_id != null) {
         void alignOfflineToggleFromOnlineVerify(activeEstateId, data.gate_pass_id, data.event_type ?? null);
+      }
+      if (data.valid && barrierWebhookUrl) {
+        void fetch(barrierWebhookUrl, { method: 'POST' }).catch(() => {});
       }
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       await queryClient.invalidateQueries({ queryKey: ['gatepass'] });

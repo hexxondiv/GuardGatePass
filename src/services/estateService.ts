@@ -1,4 +1,5 @@
 import { API_ENDPOINTS } from '../config/app_constants';
+import type { AxiosError } from 'axios';
 import type { EstateMemberListResponse } from '../types/gateApi';
 import type { EstateSummary } from '../utils/accessControl';
 import apiClient from '../utils/apiClient';
@@ -81,4 +82,22 @@ export async function fetchAllEstatesSummaries(): Promise<EstateSummary[]> {
 export async function fetchEstateById(estateId: number | string): Promise<{ id: number; name: string }> {
   const res = await apiClient.get<{ id: number; name: string }>(API_ENDPOINTS.ESTATE(estateId));
   return res.data;
+}
+
+/**
+ * `GET /estates/{estate_id}/config` — returns the estate key/value config map.
+ * Extracts `BARRIER_WEBHOOK_URL`; returns `null` when absent or on error (never throws).
+ */
+export async function fetchBarrierWebhookUrl(estateId: number | string): Promise<string | null> {
+  try {
+    const res = await apiClient.get<Record<string, string>>(API_ENDPOINTS.ESTATE_CONFIG(estateId));
+    const url = res.data?.BARRIER_WEBHOOK_URL;
+    return url && url.trim() ? url.trim() : null;
+  } catch (_err: unknown) {
+    const err = _err as AxiosError;
+    if (__DEV__) {
+      console.warn('[barrier webhook] failed to fetch estate config:', err?.message ?? _err);
+    }
+    return null;
+  }
 }

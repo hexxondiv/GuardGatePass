@@ -4,6 +4,7 @@ import { API_BASE_URL, API_ENDPOINTS } from '../config/app_constants';
 export interface AdminLoginResponse {
   access_token: string;
   token_type: string;
+  barrier_webhook_url?: string | null;
 }
 
 /**

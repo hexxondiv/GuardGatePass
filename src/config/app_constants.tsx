@@ -97,6 +97,12 @@ const DEVICE_ID_STORAGE_KEY = 'guard_device_install_id';
 const GUARD_FORCE_OFFLINE_MODE_KEY = 'guard_force_offline_mode';
 
 /**
+ * SecureStore key for the active estate's barrier webhook URL (received at login and refreshed on estate switch).
+ * Value is the full URL string, or absent when not configured.
+ */
+const BARRIER_WEBHOOK_URL_KEY = 'barrier_webhook_url';
+
+/**
  * Dev / staging API host override (host only, same rules as `EXPO_PUBLIC_DEV_API_BASE_URL`).
  * Applied at runtime via `refreshApiClientBaseUrl()` — Settings (gated) writes this key.
  */
@@ -130,6 +136,7 @@ const API_ENDPOINTS = {
   GATEPASS_ACCESS: `/gatepass/access`,
   GATEPASS_INSTANT_GUEST: `/gatepass/instant-guest`,
   /** Under `/api/v1` alongside `gatepass` router — see `gatepass-api/app/main.py`. */
+  ESTATE_CONFIG: (estateId: number | string) => `/estates/${estateId}/config`,
   GUARD_DEVICES_REGISTER: `/guard-devices/register`,
   GUARD_SYNC_BOOTSTRAP: `/guard-sync/bootstrap`,
   GUARD_SYNC_EVENTS: `/guard-sync/events`,
@@ -140,6 +147,7 @@ export {
   API_BASE_URL,
   API_ENDPOINTS,
   APP_SCHEME,
+  BARRIER_WEBHOOK_URL_KEY,
   DEVICE_ID_STORAGE_KEY,
   GUARD_DEV_API_HOST_OVERRIDE_KEY,
   GUARD_FORCE_OFFLINE_MODE_KEY,

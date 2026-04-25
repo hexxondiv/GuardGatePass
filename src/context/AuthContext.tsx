@@ -11,12 +11,13 @@ import { jwtDecode } from 'jwt-decode';
 import { setSessionUnauthorizedHandler } from '../auth/sessionEvents';
 import {
   ACTIVE_ESTATE_STORAGE_KEY,
+  BARRIER_WEBHOOK_URL_KEY,
   GUARD_FORCE_OFFLINE_MODE_KEY,
   SECURE_ACCESS_TOKEN_KEY,
 } from '../config/app_constants';
 import { loginStaff } from '../services/authService';
 import { refreshApiClientBaseUrl } from '../utils/apiClient';
-import { fetchAllEstatesSummaries } from '../services/estateService';
+import { fetchAllEstatesSummaries, fetchBarrierWebhookUrl } from '../services/estateService';
 import { runGuardSyncBootstrap } from '../services/guardSyncCoordinator';
 import { clearAllGuardSyncLocalData } from '../storage/guardSyncLocalDb';
 import type { StaffJwtPayload } from '../types/auth';
@@ -35,6 +36,7 @@ interface AuthContextType {
   isStaffAppUser: boolean;
   activeEstateId: string | null;
   availableEstates: EstateSummary[];
+  barrierWebhookUrl: string | null;
   isLoading: boolean;
   isSigningIn: boolean;
   signIn: (phone: string, accessCode: string) => Promise<void>;
@@ -49,6 +51,7 @@ const AuthContext = createContext<AuthContextType>({
   isStaffAppUser: false,
   activeEstateId: null,
   availableEstates: [],
+  barrierWebhookUrl: null,
   isLoading: true,
   isSigningIn: false,
   signIn: async () => {},
@@ -61,6 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authUser, setAuthUser] = useState<StaffJwtPayload | null>(null);
   const [activeEstateId, setActiveEstateId] = useState<string | null>(null);
   const [availableEstates, setAvailableEstates] = useState<EstateSummary[]>([]);
+  const [barrierWebhookUrl, setBarrierWebhookUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
 
@@ -93,6 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearSession = useCallback(async () => {
     await SecureStore.deleteItemAsync(SECURE_ACCESS_TOKEN_KEY);
     await SecureStore.deleteItemAsync(ACTIVE_ESTATE_STORAGE_KEY);
+    await SecureStore.deleteItemAsync(BARRIER_WEBHOOK_URL_KEY);
     try {
       await clearAllGuardSyncLocalData();
     } catch {
@@ -102,6 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAuthUser(null);
     setActiveEstateId(null);
     setAvailableEstates([]);
+    setBarrierWebhookUrl(null);
   }, []);
 
   useEffect(() => {
@@ -110,6 +116,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAuthUser(null);
       setActiveEstateId(null);
       setAvailableEstates([]);
+      setBarrierWebhookUrl(null);
+      void SecureStore.deleteItemAsync(BARRIER_WEBHOOK_URL_KEY).catch(() => {});
       void clearAllGuardSyncLocalData().catch(() => {});
     });
     return () => setSessionUnauthorizedHandler(null);
@@ -151,6 +159,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (cancelled) {
           return;
         }
+
+        const storedWebhook = await SecureStore.getItemAsync(BARRIER_WEBHOOK_URL_KEY);
+        if (!cancelled) {
+          setBarrierWebhookUrl(storedWebhook ?? null);
+        }
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -168,7 +181,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (phone: string, accessCode: string) => {
       setIsSigningIn(true);
       try {
-        const { access_token } = await loginStaff(phone, accessCode);
+        const loginResponse = await loginStaff(phone, accessCode);
+        const { access_token } = loginResponse;
 
         let decoded: StaffJwtPayload;
         try {
@@ -186,6 +200,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserToken(access_token);
         setAuthUser(decoded);
         await applyEstateContext(decoded, roles);
+
+        const webhookUrl = loginResponse.barrier_webhook_url ?? null;
+        if (webhookUrl) {
+          await SecureStore.setItemAsync(BARRIER_WEBHOOK_URL_KEY, webhookUrl);
+        } else {
+          await SecureStore.deleteItemAsync(BARRIER_WEBHOOK_URL_KEY);
+        }
+        setBarrierWebhookUrl(webhookUrl);
       } finally {
         setIsSigningIn(false);
       }
@@ -203,6 +225,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     await SecureStore.setItemAsync(ACTIVE_ESTATE_STORAGE_KEY, estateId);
     setActiveEstateId(estateId);
+
+    const webhookUrl = await fetchBarrierWebhookUrl(estateId);
+    if (webhookUrl) {
+      await SecureStore.setItemAsync(BARRIER_WEBHOOK_URL_KEY, webhookUrl);
+    } else {
+      await SecureStore.deleteItemAsync(BARRIER_WEBHOOK_URL_KEY);
+    }
+    setBarrierWebhookUrl(webhookUrl);
   }, [availableEstates]);
 
   const roles = useMemo(
@@ -244,6 +274,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isStaffAppUser,
       activeEstateId,
       availableEstates,
+      barrierWebhookUrl,
       isLoading,
       isSigningIn,
       signIn,
@@ -257,6 +288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isStaffAppUser,
       activeEstateId,
       availableEstates,
+      barrierWebhookUrl,
       isLoading,
       isSigningIn,
       signIn,
