@@ -11,6 +11,7 @@ import { ConnectivityModeProvider } from './src/context/ConnectivityModeContext'
 import { EstateProvider } from './src/context/EstateContext';
 import GuardTabs from './src/navigation/GuardTabs';
 import AccessDeniedScreen from './src/screens/AccessDeniedScreen';
+import DeviceLockedScreen from './src/screens/DeviceLockedScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import { navigationRef } from './src/navigation/RootNavigation';
 import type { RootStackParamList } from './src/navigation/types';
@@ -42,7 +43,7 @@ const linking = {
 };
 
 function RootNavigator() {
-  const { userToken, isLoading, isStaffAppUser } = useAuth();
+  const { userToken, isLoading, isStaffAppUser, isDeviceLocked } = useAuth();
 
   if (isLoading) {
     return (
@@ -72,6 +73,14 @@ function RootNavigator() {
     return (
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="AccessDenied" component={AccessDeniedScreen} />
+      </Stack.Navigator>
+    );
+  }
+
+  if (isDeviceLocked) {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="DeviceLocked" component={DeviceLockedScreen} />
       </Stack.Navigator>
     );
   }

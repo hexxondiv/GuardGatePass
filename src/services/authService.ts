@@ -10,15 +10,22 @@ export interface AdminLoginResponse {
 /**
  * Staff login — `POST /login/admin` with account access code (not a gate pass code).
  */
-export async function loginStaff(phone: string, accessCode: string): Promise<AdminLoginResponse> {
+export async function loginStaff(
+  phone: string,
+  accessCode: string,
+  deviceId?: string | null,
+): Promise<AdminLoginResponse> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (API_BASE_URL.includes('ngrok')) {
     headers['ngrok-skip-browser-warning'] = 'true';
   }
+  if (deviceId?.trim()) {
+    headers['X-Device-Id'] = deviceId.trim();
+  }
 
   const response = await axios.post<AdminLoginResponse>(
     `${API_BASE_URL}${API_ENDPOINTS.LOGIN_ADMIN}`,
-    { phone, access_code: accessCode },
+    { phone, access_code: accessCode, device_id: deviceId?.trim() || undefined },
     { headers },
   );
 

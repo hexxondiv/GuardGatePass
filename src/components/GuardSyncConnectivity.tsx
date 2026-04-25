@@ -10,12 +10,12 @@ import { flushGuardSyncEventQueue } from '../services/guardSyncCoordinator';
  * Surfaces non-fatal conflict copy when the server returns `effective_status: conflict`.
  */
 export default function GuardSyncConnectivity() {
-  const { userToken, activeEstateId, isStaffAppUser } = useAuth();
+  const { userToken, activeEstateId, isStaffAppUser, isDeviceLocked } = useAuth();
   const { operationalOnline } = useConnectivityMode();
   const flushingRef = useRef(false);
 
   useEffect(() => {
-    if (!userToken || activeEstateId == null || !isStaffAppUser) {
+    if (!userToken || activeEstateId == null || !isStaffAppUser || isDeviceLocked) {
       return;
     }
     const estateId: string = activeEstateId;
@@ -72,7 +72,7 @@ export default function GuardSyncConnectivity() {
     return () => {
       unsub();
     };
-  }, [userToken, activeEstateId, isStaffAppUser, operationalOnline]);
+  }, [userToken, activeEstateId, isStaffAppUser, isDeviceLocked, operationalOnline]);
 
   return null;
 }

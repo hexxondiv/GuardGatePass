@@ -21,7 +21,7 @@ import { fetchAllEstatesSummaries, fetchBarrierWebhookUrl } from '../services/es
 import { runGuardSyncBootstrap } from '../services/guardSyncCoordinator';
 import { deactivateGuardDevice } from '../services/guardSyncService';
 import { clearAllGuardSyncLocalData } from '../storage/guardSyncLocalDb';
-import { getStoredDeviceId } from '../utils/deviceId';
+import { getOrCreateDeviceId, getStoredDeviceId } from '../utils/deviceId';
 import type { StaffJwtPayload } from '../types/auth';
 import {
   type AppRole,
@@ -39,11 +39,14 @@ interface AuthContextType {
   activeEstateId: string | null;
   availableEstates: EstateSummary[];
   barrierWebhookUrl: string | null;
+  isDeviceLocked: boolean;
+  isCheckingDeviceAccess: boolean;
   isLoading: boolean;
   isSigningIn: boolean;
   signIn: (phone: string, accessCode: string) => Promise<void>;
   logout: () => Promise<void>;
   selectEstate: (estateId: string) => Promise<void>;
+  checkDeviceAccessNow: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -54,11 +57,14 @@ const AuthContext = createContext<AuthContextType>({
   activeEstateId: null,
   availableEstates: [],
   barrierWebhookUrl: null,
+  isDeviceLocked: false,
+  isCheckingDeviceAccess: false,
   isLoading: true,
   isSigningIn: false,
   signIn: async () => {},
   logout: async () => {},
   selectEstate: async () => {},
+  checkDeviceAccessNow: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -67,6 +73,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeEstateId, setActiveEstateId] = useState<string | null>(null);
   const [availableEstates, setAvailableEstates] = useState<EstateSummary[]>([]);
   const [barrierWebhookUrl, setBarrierWebhookUrl] = useState<string | null>(null);
+  const [isDeviceLocked, setIsDeviceLocked] = useState(false);
+  const [isCheckingDeviceAccess, setIsCheckingDeviceAccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
 
@@ -110,6 +118,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActiveEstateId(null);
     setAvailableEstates([]);
     setBarrierWebhookUrl(null);
+    setIsDeviceLocked(false);
+    setIsCheckingDeviceAccess(false);
   }, []);
 
   useEffect(() => {
@@ -119,6 +129,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setActiveEstateId(null);
       setAvailableEstates([]);
       setBarrierWebhookUrl(null);
+      setIsDeviceLocked(false);
+      setIsCheckingDeviceAccess(false);
       void SecureStore.deleteItemAsync(BARRIER_WEBHOOK_URL_KEY).catch(() => {});
       void clearAllGuardSyncLocalData().catch(() => {});
     });
@@ -183,7 +195,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (phone: string, accessCode: string) => {
       setIsSigningIn(true);
       try {
-        const loginResponse = await loginStaff(phone, accessCode);
+        const deviceId = await getOrCreateDeviceId();
+        const loginResponse = await loginStaff(phone, accessCode, deviceId);
         const { access_token } = loginResponse;
 
         let decoded: StaffJwtPayload;
@@ -210,6 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await SecureStore.deleteItemAsync(BARRIER_WEBHOOK_URL_KEY);
         }
         setBarrierWebhookUrl(webhookUrl);
+        setIsDeviceLocked(false);
       } finally {
         setIsSigningIn(false);
       }
@@ -252,6 +266,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isStaffAppUser = useMemo(() => isStaffAppRole(roles), [roles]);
 
+  const checkDeviceAccessNow = useCallback(async () => {
+    if (!userToken || !activeEstateId || !isStaffAppUser) {
+      setIsDeviceLocked(false);
+      return;
+    }
+    setIsCheckingDeviceAccess(true);
+    try {
+      const out = await runGuardSyncBootstrap(activeEstateId);
+      if (!out.ok && out.code === 'device_locked') {
+        setIsDeviceLocked(true);
+      } else if (out.ok) {
+        setIsDeviceLocked(false);
+      }
+    } finally {
+      setIsCheckingDeviceAccess(false);
+    }
+  }, [activeEstateId, isStaffAppUser, userToken]);
+
   useEffect(() => {
     if (!userToken || !activeEstateId || !isStaffAppUser) {
       return;
@@ -267,14 +299,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         /* continue with bootstrap */
       }
       const out = await runGuardSyncBootstrap(activeEstateId);
-      if (!cancelled && !out.ok && __DEV__) {
-        console.warn('[guard sync bootstrap]', out.message);
+      if (!cancelled) {
+        if (!out.ok && out.code === 'device_locked') {
+          setIsDeviceLocked(true);
+          return;
+        }
+        if (out.ok) {
+          setIsDeviceLocked(false);
+        } else if (__DEV__) {
+          console.warn('[guard sync bootstrap]', out.message);
+        }
       }
     })();
+    const timer = setInterval(() => {
+      void checkDeviceAccessNow();
+    }, 30_000);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
-  }, [userToken, activeEstateId, isStaffAppUser]);
+  }, [userToken, activeEstateId, isStaffAppUser, checkDeviceAccessNow]);
 
   const value = useMemo(
     () => ({
@@ -285,11 +329,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       activeEstateId,
       availableEstates,
       barrierWebhookUrl,
+      isDeviceLocked,
+      isCheckingDeviceAccess,
       isLoading,
       isSigningIn,
       signIn,
       logout,
       selectEstate,
+      checkDeviceAccessNow,
     }),
     [
       userToken,
@@ -299,11 +346,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       activeEstateId,
       availableEstates,
       barrierWebhookUrl,
+      isDeviceLocked,
+      isCheckingDeviceAccess,
       isLoading,
       isSigningIn,
       signIn,
       logout,
       selectEstate,
+      checkDeviceAccessNow,
     ],
   );
 

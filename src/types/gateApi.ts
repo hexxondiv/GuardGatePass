@@ -106,6 +106,7 @@ export type GuardDeviceResponse = {
   platform?: string | null;
   app_version?: string | null;
   status: string;
+  device_status: string;
   registered_at: string;
   last_seen_at?: string | null;
   last_sync_at?: string | null;

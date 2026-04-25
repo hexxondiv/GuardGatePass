@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import axios from 'axios';
 import {
   countPendingEvents,
   deletePendingByIdempotencyKeys,
@@ -27,7 +28,32 @@ const K_LAST_PASS_COUNT = 'guard_sync_last_pass_count';
 
 export type GuardSyncBootstrapOutcome =
   | { ok: true; passCount: number; serverTime: string }
-  | { ok: false; message: string };
+  | { ok: false; message: string; code?: 'device_locked' };
+
+type GuardSyncErrorDetails = { message: string; code?: 'device_locked' };
+
+function describeGuardSyncError(error: unknown): GuardSyncErrorDetails {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+    const detailText = typeof detail === 'string' ? detail : '';
+    if (status === 423 || status === 403) {
+      const lowered = detailText.toLowerCase();
+      if (lowered.includes('device') && (lowered.includes('locked') || lowered.includes('deactivated'))) {
+        return {
+          code: 'device_locked',
+          message: detailText || 'This device is locked by admin.',
+        };
+      }
+    }
+    return { message: error.message };
+  }
+  const msg =
+    error && typeof error === 'object' && 'message' in error
+      ? String((error as Error).message)
+      : String(error);
+  return { message: msg };
+}
 
 function buildRegisterPayload(deviceId: string) {
   return {
@@ -53,8 +79,12 @@ export async function runGuardSyncBootstrap(estateId: string): Promise<GuardSync
   try {
     await registerGuardDevice(buildRegisterPayload(deviceId));
   } catch (e: unknown) {
-    const msg = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : String(e);
-    return { ok: false, message: `Device registration failed: ${msg}` };
+    const out = describeGuardSyncError(e);
+    return {
+      ok: false,
+      code: out.code,
+      message: `Device registration failed: ${out.message}`,
+    };
   }
 
   try {
@@ -67,8 +97,12 @@ export async function runGuardSyncBootstrap(estateId: string): Promise<GuardSync
     await setKv(K_LAST_PASS_COUNT, String(data.pass_count));
     return { ok: true, passCount: data.pass_count, serverTime: data.server_time };
   } catch (e: unknown) {
-    const msg = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : String(e);
-    return { ok: false, message: `Bootstrap failed: ${msg}` };
+    const out = describeGuardSyncError(e);
+    return {
+      ok: false,
+      code: out.code,
+      message: `Bootstrap failed: ${out.message}`,
+    };
   }
 }
 
