@@ -56,3 +56,13 @@ export async function getOrCreateDeviceId(): Promise<string | null> {
     return null;
   }
 }
+
+/** Read existing persisted device id without creating a new one. */
+export async function getStoredDeviceId(): Promise<string | null> {
+  try {
+    const existing = await SecureStore.getItemAsync(DEVICE_ID_STORAGE_KEY);
+    return existing?.trim() || null;
+  } catch {
+    return null;
+  }
+}

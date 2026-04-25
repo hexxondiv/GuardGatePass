@@ -138,6 +138,7 @@ const API_ENDPOINTS = {
   /** Under `/api/v1` alongside `gatepass` router — see `gatepass-api/app/main.py`. */
   ESTATE_CONFIG: (estateId: number | string) => `/estates/${estateId}/config`,
   GUARD_DEVICES_REGISTER: `/guard-devices/register`,
+  GUARD_DEVICES_DEACTIVATE: `/guard-devices/deactivate`,
   GUARD_SYNC_BOOTSTRAP: `/guard-sync/bootstrap`,
   GUARD_SYNC_EVENTS: `/guard-sync/events`,
 };

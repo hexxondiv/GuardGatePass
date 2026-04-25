@@ -1,5 +1,6 @@
 import { API_ENDPOINTS } from '../config/app_constants';
 import type {
+  GuardDeviceDeactivateRequest,
   GuardDeviceRegisterRequest,
   GuardDeviceResponse,
   GuardSyncBootstrapResponse,
@@ -13,6 +14,14 @@ export async function registerGuardDevice(
   payload: GuardDeviceRegisterRequest,
 ): Promise<GuardDeviceResponse> {
   const res = await apiClient.post<GuardDeviceResponse>(API_ENDPOINTS.GUARD_DEVICES_REGISTER, payload);
+  return res.data;
+}
+
+/** `POST /guard-devices/deactivate` — mark this handset inactive for current guard estate. */
+export async function deactivateGuardDevice(
+  payload: GuardDeviceDeactivateRequest,
+): Promise<GuardDeviceResponse> {
+  const res = await apiClient.post<GuardDeviceResponse>(API_ENDPOINTS.GUARD_DEVICES_DEACTIVATE, payload);
   return res.data;
 }
 

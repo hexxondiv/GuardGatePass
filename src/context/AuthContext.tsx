@@ -19,7 +19,9 @@ import { loginStaff } from '../services/authService';
 import { refreshApiClientBaseUrl } from '../utils/apiClient';
 import { fetchAllEstatesSummaries, fetchBarrierWebhookUrl } from '../services/estateService';
 import { runGuardSyncBootstrap } from '../services/guardSyncCoordinator';
+import { deactivateGuardDevice } from '../services/guardSyncService';
 import { clearAllGuardSyncLocalData } from '../storage/guardSyncLocalDb';
+import { getStoredDeviceId } from '../utils/deviceId';
 import type { StaffJwtPayload } from '../types/auth';
 import {
   type AppRole,
@@ -216,8 +218,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const logout = useCallback(async () => {
+    try {
+      const deviceId = await getStoredDeviceId();
+      if (deviceId && userToken && activeEstateId) {
+        await deactivateGuardDevice({ device_id: deviceId });
+      }
+    } catch {
+      /* logout should still proceed even if device deactivation fails */
+    }
     await clearSession();
-  }, [clearSession]);
+  }, [activeEstateId, clearSession, userToken]);
 
   const selectEstate = useCallback(async (estateId: string) => {
     if (!availableEstates.some((e) => e.id === estateId)) {

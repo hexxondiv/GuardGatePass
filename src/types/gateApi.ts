@@ -91,6 +91,11 @@ export type GuardDeviceRegisterRequest = {
   metadata?: Record<string, unknown> | null;
 };
 
+/** `schemas.GuardDeviceDeactivateRequest`. */
+export type GuardDeviceDeactivateRequest = {
+  device_id: string;
+};
+
 /** `schemas.GuardDeviceResponse`. */
 export type GuardDeviceResponse = {
   id: number;
