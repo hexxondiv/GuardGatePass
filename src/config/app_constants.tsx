@@ -78,7 +78,7 @@ const API_BASE_URL = resolveApiBaseUrl(getDefaultApiHostBaseSync());
 const PAYSTACK_CALLBACK_BASE_URL = appConfig?.paystackCallbackBaseUrl?.length
   ? resolvePaystackCallbackBase(appConfig.paystackCallbackBaseUrl)
   : resolvePaystackCallbackBase(getDefaultApiHostBaseSync());
-const APP_SCHEME = 'com.hexxondiv.guardgatepass';
+const APP_SCHEME = 'org.gpera.guard';
 
 /**
  * SecureStore key for JWT — same as ResidentGatePass `userToken` so Bearer attachment stays consistent.

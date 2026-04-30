@@ -21,7 +21,7 @@ const queryClient = new QueryClient();
 const Stack = createStackNavigator<RootStackParamList>();
 
 const linking = {
-  prefixes: ['com.hexxondiv.guardgatepass://', 'guardgatepass://'],
+  prefixes: ['org.gpera.guard://', 'guardgatepass://'],
   config: {
     screens: {
       Login: 'login',

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Guard Gate Pass",
     "slug": "Guard-Gate-Pass",
-    "scheme": "com.hexxondiv.guardgatepass",
+    "scheme": "org.gpera.guard",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./src/assets/guard_icon.png",
@@ -15,14 +15,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hexxondiv.guardgatepass"
+      "bundleIdentifier": "org.gpera.guard"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/guard_adaptive_foreground.png",
         "backgroundColor": "#0d1117"
       },
-      "package": "com.hexxondiv.guardgatepass",
+      "package": "org.gpera.guard",
       "permissions": [
         "android.permission.WAKE_LOCK"
       ],
