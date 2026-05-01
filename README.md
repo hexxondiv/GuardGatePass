@@ -61,9 +61,9 @@ Use the APK from an **internal** EAS build, or `adb install` after a local `expo
 - **Motion:** verify flip and live-dot pulse respect **Reduce motion** (`AccessibilityInfo`).
 - **Haptics + audio:** `verifyOutcomeFeedback` fires haptics immediately; sound is scheduled with `InteractionManager.runAfterInteractions` (`expo-audio` seek + play) so it does not block verify UI, flip animation, or reset timers. Sounds are preloaded when the Verify screen mounts (`preloadVerifyOutcomeSounds`). Cues: `src/assets/sounds/Granted_New.wav` (success) and `Denied.mp3` (failure).
 - **Screen reader:** keypad, scan zone, and outcome views expose labels/hints; scan modal labels the viewfinder.
-- **Icons / splash:** distinct from the resident app — `scripts/generate_guard_assets.py` (amber shield on dark background). Regenerate after changing art:
+- **Icons / splash:** distinct from the resident app — sourced from the canonical Guard app icon set. Sync after changing art:
   ```bash
-  python3 scripts/generate_guard_assets.py
+  python3 scripts/sync_guard_icons.py /home/james/Desktop/GPS/assets/GuardGatePass/AppIcons
   ```
 - **Superuser API debug:** Settings shows the **resolved API base** only for `super_admin` (no secrets). **Staging host override** is in SecureStore: visible in **`__DEV__`**, or in release after **seven taps** on the version footer (super admins only).
 
