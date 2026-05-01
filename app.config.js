@@ -35,9 +35,9 @@ loadEnvFile('.env.local');
 module.exports = ({ config }) => {
   const devMode = String(process.env.DEV_MODE || '').toLowerCase() === 'true';
 
-  const prodApiBaseUrl = process.env.PROD_API_BASE_URL || 'https://gatepass.hexxondiv.com';
+  const prodApiBaseUrl = process.env.PROD_API_BASE_URL || 'https://api.gpera.org';
   const prodPaystackCallbackBaseUrl =
-    process.env.PROD_PAYSTACK_CALLBACK_BASE_URL || 'https://gatepass.hexxondiv.com';
+    process.env.PROD_PAYSTACK_CALLBACK_BASE_URL || 'https://api.gpera.org';
   const devApiBaseUrl =
     process.env.EXPO_PUBLIC_DEV_API_BASE_URL || process.env.DEV_API_BASE_URL;
   const devPaystackCallbackBaseUrl =

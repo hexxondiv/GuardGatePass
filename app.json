@@ -47,6 +47,17 @@
           "cameraPermission": "Allow Guard Gate Pass to use the camera to scan visitor gate pass QR codes at the estate entrance."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "appConfig": {
+        "devMode": false,
+        "apiBaseUrl": "https://api.gpera.org",
+        "paystackCallbackBaseUrl": "https://api.gpera.org"
+      },
+      "eas": {
+        "projectId": "f1e8fc79-76ae-4b78-b14c-bf0f82e4fda6"
+      }
+    },
+    "owner": "hexxondiv"
   }
 }

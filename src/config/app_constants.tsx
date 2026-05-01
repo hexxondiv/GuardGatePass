@@ -70,7 +70,7 @@ function getDefaultApiHostBaseSync(): string {
         ? appConfig.apiBaseUrl
         : appConfig?.devMode
           ? defaultDevApiBase
-          : 'https://gatepass.hexxondiv.com';
+          : 'https://api.gpera.org';
 }
 
 const API_BASE_URL = resolveApiBaseUrl(getDefaultApiHostBaseSync());
