@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Guard Gate Pass",
+    "name": "GPERA Guard",
     "slug": "Guard-Gate-Pass",
     "scheme": "org.gpera.guard",
     "version": "1.0.0",
@@ -44,7 +44,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Guard Gate Pass to use the camera to scan visitor gate pass QR codes at the estate entrance."
+          "cameraPermission": "Allow GPERA Guard to use the camera to scan visitor gate pass QR codes at the estate entrance."
         }
       ]
     ],

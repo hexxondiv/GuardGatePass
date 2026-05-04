@@ -78,7 +78,7 @@ export default function LoginScreen() {
             <Image source={require('../assets/guard_icon.png')} style={styles.logo} resizeMode="cover" />
           </View>
           <Text style={styles.title} maxFontSizeMultiplier={1.45}>
-            Guard Gate Pass
+            GPERA Guard
           </Text>
           <Text style={styles.subtitle} maxFontSizeMultiplier={1.35}>
             Sign in to manage estate entry.
