@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type TextInput as TextInputType,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -32,6 +33,7 @@ import type { GuardTabParamList } from '../navigation/types';
 
 const HOST_SEARCH_DEBOUNCE_MS = 350;
 const INSTANT_SUCCESS_MS = 3500;
+type InstantGuestField = 'host' | 'guestName' | 'guestNumber' | 'purpose';
 
 export default function InstantGuestScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<GuardTabParamList>>();
@@ -58,9 +60,13 @@ export default function InstantGuestScreen() {
   const [guestName, setGuestName] = useState('');
   const [guestNumber, setGuestNumber] = useState('');
   const [purpose, setPurpose] = useState('');
+  const [focusedField, setFocusedField] = useState<InstantGuestField | null>(null);
   const [instantFormError, setInstantFormError] = useState<string | null>(null);
   const [instantSuccessLine, setInstantSuccessLine] = useState<string | null>(null);
   const instantSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const guestNameRef = useRef<TextInputType>(null);
+  const guestNumberRef = useRef<TextInputType>(null);
+  const purposeRef = useRef<TextInputType>(null);
 
   const {
     data: hostSearchData,
@@ -139,7 +145,7 @@ export default function InstantGuestScreen() {
     setSelectedHost({ userId: m.user_id, label });
     setHostInput('');
     setInstantFormError(null);
-    Keyboard.dismiss();
+    setTimeout(() => guestNameRef.current?.focus(), 0);
   }, []);
 
   const submitInstantGuest = useCallback(() => {
@@ -149,6 +155,33 @@ export default function InstantGuestScreen() {
     Keyboard.dismiss();
     instantMutation.mutate();
   }, [guestName, guestNumber, instantMutation, selectedHost]);
+
+  const focusGuestName = useCallback(() => {
+    if (!selectedHost) {
+      setInstantFormError('Select a resident host.');
+      return;
+    }
+    setInstantFormError(null);
+    guestNameRef.current?.focus();
+  }, [selectedHost]);
+
+  const focusGuestNumber = useCallback(() => {
+    if (!guestName.trim()) {
+      setInstantFormError('Enter visitor name.');
+      return;
+    }
+    setInstantFormError(null);
+    guestNumberRef.current?.focus();
+  }, [guestName]);
+
+  const focusPurpose = useCallback(() => {
+    if (!guestNumber.trim()) {
+      setInstantFormError('Enter phone or vehicle plate.');
+      return;
+    }
+    setInstantFormError(null);
+    purposeRef.current?.focus();
+  }, [guestNumber]);
 
   const hostSuggestions = hostSearchData?.items ?? [];
   const showHostList =
@@ -221,14 +254,18 @@ export default function InstantGuestScreen() {
                           selectedHost ? '' : 'Type name or phone (min. 2 characters)'
                         }
                         placeholderTextColor="rgba(255,255,255,0.35)"
-                        style={styles.fieldInput}
+                        style={[styles.fieldInput, focusedField === 'host' && styles.fieldInputFocused]}
                         autoCapitalize="none"
                         autoCorrect={false}
                         editable={!formDisabled && Boolean(activeEstateId)}
                         accessibilityLabel="Search resident host"
-                        returnKeyType="done"
-                        blurOnSubmit
-                        onSubmitEditing={Keyboard.dismiss}
+                        cursorColor={color.brandAmber}
+                        selectionColor={color.brandAmber}
+                        returnKeyType="next"
+                        blurOnSubmit={false}
+                        onFocus={() => setFocusedField('host')}
+                        onBlur={() => setFocusedField(null)}
+                        onSubmitEditing={focusGuestName}
                       />
                       {hostSearchLoading ? (
                         <ActivityIndicator color={color.accent} style={styles.hostSearchSpinner} />
@@ -287,6 +324,7 @@ export default function InstantGuestScreen() {
 
                     <Text style={styles.fieldLabel}>Visitor name</Text>
                     <TextInput
+                      ref={guestNameRef}
                       value={guestName}
                       onChangeText={(t) => {
                         setGuestName(t);
@@ -294,16 +332,21 @@ export default function InstantGuestScreen() {
                       }}
                       placeholder="Full name"
                       placeholderTextColor="rgba(255,255,255,0.35)"
-                      style={styles.fieldInput}
+                      style={[styles.fieldInput, focusedField === 'guestName' && styles.fieldInputFocused]}
                       editable={!formDisabled}
                       accessibilityLabel="Visitor name"
-                      returnKeyType="done"
-                      blurOnSubmit
-                      onSubmitEditing={Keyboard.dismiss}
+                      cursorColor={color.brandAmber}
+                      selectionColor={color.brandAmber}
+                      returnKeyType="next"
+                      blurOnSubmit={false}
+                      onFocus={() => setFocusedField('guestName')}
+                      onBlur={() => setFocusedField(null)}
+                      onSubmitEditing={focusGuestNumber}
                     />
 
                     <Text style={styles.fieldLabel}>Phone or plate</Text>
                     <TextInput
+                      ref={guestNumberRef}
                       value={guestNumber}
                       onChangeText={(t) => {
                         setGuestNumber(t);
@@ -311,28 +354,37 @@ export default function InstantGuestScreen() {
                       }}
                       placeholder="Phone or vehicle plate"
                       placeholderTextColor="rgba(255,255,255,0.35)"
-                      style={styles.fieldInput}
+                      style={[styles.fieldInput, focusedField === 'guestNumber' && styles.fieldInputFocused]}
                       editable={!formDisabled}
                       accessibilityLabel="Guest phone or plate"
-                      returnKeyType="done"
-                      blurOnSubmit
-                      onSubmitEditing={Keyboard.dismiss}
+                      cursorColor={color.brandAmber}
+                      selectionColor={color.brandAmber}
+                      returnKeyType="next"
+                      blurOnSubmit={false}
+                      onFocus={() => setFocusedField('guestNumber')}
+                      onBlur={() => setFocusedField(null)}
+                      onSubmitEditing={focusPurpose}
                     />
 
                     <Text style={styles.fieldLabel}>
                       Purpose <Text style={styles.fieldLabelOptional}>(optional)</Text>
                     </Text>
                     <TextInput
+                      ref={purposeRef}
                       value={purpose}
                       onChangeText={setPurpose}
                       placeholder="Visit purpose"
                       placeholderTextColor="rgba(255,255,255,0.35)"
-                      style={styles.fieldInput}
+                      style={[styles.fieldInput, focusedField === 'purpose' && styles.fieldInputFocused]}
                       editable={!formDisabled}
                       accessibilityLabel="Visit purpose optional"
+                      cursorColor={color.brandAmber}
+                      selectionColor={color.brandAmber}
                       returnKeyType="done"
-                      blurOnSubmit
-                      onSubmitEditing={Keyboard.dismiss}
+                      blurOnSubmit={false}
+                      onFocus={() => setFocusedField('purpose')}
+                      onBlur={() => setFocusedField(null)}
+                      onSubmitEditing={submitInstantGuest}
                     />
 
                     {instantFormError ? (
@@ -471,6 +523,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#f0f6fc',
     backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  fieldInputFocused: {
+    borderColor: color.brandAmber,
   },
   hostSuggestWrap: {
     position: 'relative',

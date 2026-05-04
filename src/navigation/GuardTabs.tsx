@@ -15,7 +15,7 @@ export default function GuardTabs() {
       initialRouteName="Verification"
       screenOptions={{
         headerTitleAlign: 'center',
-        tabBarActiveTintColor: color.accent,
+        tabBarActiveTintColor: color.brandAmber,
         tabBarInactiveTintColor: color.textMuted,
         tabBarStyle: { backgroundColor: color.surface },
         headerStyle: { backgroundColor: color.bg },

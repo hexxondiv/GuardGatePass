@@ -7,13 +7,17 @@ type GuardAudioPlayer = ReturnType<typeof createAudioPlayer>;
 
 const SUCCESS_SOURCE = require('../assets/sounds/Granted_New.wav');
 const DENIED_SOURCE = require('../assets/sounds/Denied.mp3');
+const KEYPAD_TAP_SOURCE = require('../assets/sounds/Keypad_Tap.wav');
 
 let successPlayer: GuardAudioPlayer | null = null;
 let deniedPlayer: GuardAudioPlayer | null = null;
+let keypadTapPlayer: GuardAudioPlayer | null = null;
 let loadPlayersPromise: Promise<void> | null = null;
+let loadKeypadTapPromise: Promise<void> | null = null;
 
 /** Serialize native seek/play so rapid verifies do not overlap on the same player. */
 let playChain: Promise<void> = Promise.resolve();
+let keypadTapChain: Promise<void> = Promise.resolve();
 
 const PLAYER_OPTIONS = {
   updateInterval: 500,
@@ -46,9 +50,12 @@ function resetPlayers(logReason?: string): void {
   }
   disposePlayer(successPlayer);
   disposePlayer(deniedPlayer);
+  disposePlayer(keypadTapPlayer);
   successPlayer = null;
   deniedPlayer = null;
+  keypadTapPlayer = null;
   loadPlayersPromise = null;
+  loadKeypadTapPromise = null;
 }
 
 async function ensureAudioMode(): Promise<void> {
@@ -145,6 +152,36 @@ async function ensurePlayers(): Promise<void> {
   }
 }
 
+async function ensureKeypadTapPlayer(): Promise<void> {
+  if (Platform.OS === 'web') {
+    return;
+  }
+  if (keypadTapPlayer) {
+    return;
+  }
+
+  if (!loadKeypadTapPromise) {
+    loadKeypadTapPromise = (async () => {
+      await ensureAudioMode();
+      keypadTapPlayer = await createAndPrepare(KEYPAD_TAP_SOURCE, 0.36, 'keypad tap');
+    })().catch((e) => {
+      disposePlayer(keypadTapPlayer);
+      keypadTapPlayer = null;
+      loadKeypadTapPromise = null;
+      if (__DEV__) {
+        console.warn('[verifyOutcomeFeedback] keypad tap audio unavailable:', e);
+      }
+      throw e;
+    });
+  }
+
+  try {
+    await loadKeypadTapPromise;
+  } catch {
+    loadKeypadTapPromise = null;
+  }
+}
+
 async function playFromStart(player: GuardAudioPlayer): Promise<void> {
   try {
     try {
@@ -213,6 +250,7 @@ export function preloadVerifyOutcomeSounds(): void {
   }
   InteractionManager.runAfterInteractions(() => {
     void ensurePlayers().catch(() => {});
+    void ensureKeypadTapPlayer().catch(() => {});
   });
 }
 
@@ -237,4 +275,19 @@ export function verifyOutcomeFeedback(success: boolean): void {
   }
 
   scheduleSoundPlayback(success);
+}
+
+export function verifyKeypadDigitFeedback(): void {
+  if (Platform.OS === 'web') {
+    return;
+  }
+
+  keypadTapChain = keypadTapChain
+    .then(async () => {
+      await ensureKeypadTapPlayer();
+      if (keypadTapPlayer) {
+        await playFromStart(keypadTapPlayer);
+      }
+    })
+    .catch(() => {});
 }

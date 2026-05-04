@@ -44,7 +44,11 @@ import { getOrCreateDeviceId } from '../utils/deviceId';
 import { getApiErrorMessage } from '../utils/apiErrors';
 import { extractQueryParam } from '../utils/linkingUrl';
 import { useVerifyUiScale } from '../utils/verifyUiScale';
-import { preloadVerifyOutcomeSounds, verifyOutcomeFeedback } from '../utils/verifyOutcomeFeedback';
+import {
+  preloadVerifyOutcomeSounds,
+  verifyKeypadDigitFeedback,
+  verifyOutcomeFeedback,
+} from '../utils/verifyOutcomeFeedback';
 import SkeletonBlock from '../components/SkeletonBlock';
 import VerifyConnectivityHeaderRight from '../components/VerifyConnectivityHeaderRight';
 import { color, font, radii, space } from '../theme/tokens';
@@ -426,6 +430,7 @@ export default function VerificationScreen() {
         return;
       }
       if (/^\d$/.test(k) && accessCode.length < CODE_DIGITS) {
+        verifyKeypadDigitFeedback();
         setAccessCode((prev) => prev + k);
       }
     },
@@ -616,6 +621,8 @@ export default function VerificationScreen() {
                     autoComplete="sms-otp"
                     showSoftInputOnFocus={false}
                     accessibilityLabel="Six-digit access code"
+                    cursorColor={color.brandAmber}
+                    selectionColor={color.brandAmber}
                     style={styles.hiddenInput}
                   />
                   <View
@@ -762,6 +769,8 @@ export default function VerificationScreen() {
                   multiline
                   autoCapitalize="none"
                   autoCorrect={false}
+                  cursorColor={color.brandAmber}
+                  selectionColor={color.brandAmber}
                   accessibilityLabel="Paste QR text or JSON"
                 />
                 <Pressable
@@ -1020,15 +1029,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   digitCellFilled: {
-    borderColor: color.accentBorder,
-    backgroundColor: color.accentSoft,
+    borderColor: 'rgba(240, 180, 41, 0.62)',
   },
   digitCellActive: {
-    borderColor: color.accent,
-    shadowColor: color.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
+    borderColor: color.brandAmber,
   },
   digitText: {
     fontWeight: '700',

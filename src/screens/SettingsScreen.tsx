@@ -328,7 +328,7 @@ export default function SettingsScreen() {
         >
           <View style={styles.heroTitleRow}>
             <View style={styles.heroIconWrap}>
-              <Ionicons name="settings-outline" size={26} color="#58a6ff" />
+              <Ionicons name="settings-outline" size={26} color={color.brandAmber} />
             </View>
             <Text style={styles.heroTitle}>Settings</Text>
           </View>
@@ -421,15 +421,15 @@ export default function SettingsScreen() {
             accessibilityLabel="Refresh pass cache from server"
           >
             {bootstrapBusy ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={color.brandAmber} />
             ) : (
               <>
-                <Ionicons name="refresh" size={22} color="#fff" />
+                <Ionicons name="refresh" size={22} color={color.brandAmber} />
                 <View style={styles.actionTextCol}>
                   <Text style={styles.actionPrimaryTitle}>Refresh pass cache</Text>
                   <Text style={styles.actionPrimarySub}>Download the latest passes from the server</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.5)" />
+                <Ionicons name="chevron-forward" size={20} color={color.brandAmber} />
               </>
             )}
           </Pressable>
@@ -752,7 +752,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: '#1f6feb',
+    backgroundColor: '#063f2a',
     borderRadius: 14,
     paddingVertical: 16,
     paddingHorizontal: 16,
@@ -782,12 +782,12 @@ const styles = StyleSheet.create({
   actionPrimaryTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
+    color: color.brandAmber,
   },
   actionPrimarySub: {
     marginTop: 2,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.75)',
+    color: 'rgba(240, 180, 41, 0.76)',
     lineHeight: 16,
   },
   actionSecondaryTitle: {
