@@ -74,9 +74,12 @@ export default function LoginScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.heroGlow}
           />
-          <View style={styles.logoWrap} accessibilityElementsHidden>
-            <Image source={require('../assets/guard_icon.png')} style={styles.logo} resizeMode="cover" />
-          </View>
+          <Image
+            source={require('../assets/guard_icon.png')}
+            style={styles.logo}
+            resizeMode="cover"
+            accessibilityElementsHidden
+          />
           <Text style={styles.title} maxFontSizeMultiplier={1.45}>
             GPERA Guard
           </Text>
@@ -201,15 +204,11 @@ const styles = StyleSheet.create({
     borderRadius: 110,
     opacity: 0.96,
   },
-  logoWrap: {
+  logo: {
     width: 72,
     height: 72,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: color.bg,
-    borderWidth: 1,
-    borderColor: color.accentBorder,
     marginBottom: space.lg,
     overflow: 'hidden',
     shadowColor: color.shadow,
@@ -217,10 +216,6 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 8,
-  },
-  logo: {
-    width: '100%',
-    height: '100%',
   },
   title: {
     fontSize: 30,
