@@ -363,8 +363,7 @@ export default function SettingsScreen() {
             <View style={styles.manualOfflineTextCol}>
               <Text style={styles.manualOfflineTitle}>Manual offline mode</Text>
               <Text style={styles.manualOfflineSub}>
-                Behave as if you have no network: cached passes only, even on Wi‑Fi or mobile data. Turn off to go
-                live again — you need an internet connection to switch back.
+                Use cached passes only until you turn this off.
               </Text>
             </View>
             <Switch
@@ -405,8 +404,7 @@ export default function SettingsScreen() {
           </View>
 
           <Text style={styles.explainer}>
-            We keep active passes on this device so you can verify at the gate without internet. Refresh pulls the
-            latest list; offline verifications upload when you are back online.
+            Cached passes let you verify visitors when internet is unavailable.
           </Text>
 
           <Pressable
